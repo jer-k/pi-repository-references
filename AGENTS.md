@@ -5,13 +5,13 @@
 Represent expected and recoverable errors as `Result<T, E>` values using
 `better-result`.
 
-Use tagged errors from `extensions/hubble-errors.ts` and wrap filesystem or
-JSON operations with `Result.try` / `Result.tryPromise`.
+Use tagged errors from `extensions/repository-reference-errors.ts` and wrap
+filesystem or JSON operations with `Result.try` / `Result.tryPromise`.
 
 Do not convert programmer defects into `Result` values. Exceptions are allowed
 at integration boundaries, for cancellation, and in tests. Pi tool handlers
-should use the existing `throwReferenceError` boundary; UI handlers should notify
-the user and return.
+should use the `throwRepositoryReferenceError` boundary; UI handlers should
+notify the user and return.
 
 ## Documentation
 
