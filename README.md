@@ -2,8 +2,6 @@
 
 A TypeScript [Pi](https://github.com/earendil-works/pi) extension for consulting source code from Git repositories outside the active project.
 
-The domain language and intended behavior are documented in [`CONTEXT.md`](./CONTEXT.md).
-
 ## Development
 
 Requirements:

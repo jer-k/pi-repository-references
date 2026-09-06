@@ -40,7 +40,7 @@ test("declares the Repository References extension as a Pi package resource", as
     JSON.parse(await readFile(join(repositoryRoot, "package.json"), "utf8"))
   );
 
-  expect(manifest.files).toEqual(["extensions", "CONTEXT.md", "README.md"]);
+  expect(manifest.files).toEqual(["extensions", "README.md"]);
   expect(manifest.pi).toEqual({
     extensions: ["./extensions/repository-references.ts"],
   });
@@ -67,5 +67,5 @@ test("includes every production module and required document in the packed Git p
     .filter((path) => path.endsWith(".ts"))
     .map((path) => `extensions/${path}`);
 
-  expect([...packedPaths]).toEqual(expect.arrayContaining(["README.md", "CONTEXT.md", ...extensionPaths]));
+  expect([...packedPaths]).toEqual(expect.arrayContaining(["README.md", ...extensionPaths]));
 });

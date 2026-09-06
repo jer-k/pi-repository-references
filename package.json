@@ -13,7 +13,6 @@
   },
   "files": [
     "extensions",
-    "CONTEXT.md",
     "README.md"
   ],
   "scripts": {
