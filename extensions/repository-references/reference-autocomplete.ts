@@ -29,13 +29,19 @@ export function createReferenceAutocompleteProvider(
       }
       const beforeCursor = (lines[cursorLine] ?? "").slice(0, cursorCol);
       const child = extractChildToken(beforeCursor, session.references);
-      if (child !== undefined) return completeChild(session, child);
+      if (child !== undefined) {
+        return completeChild(session, child);
+      }
 
       const root = extractRootToken(beforeCursor);
-      if (root === undefined) return current.getSuggestions(lines, cursorLine, cursorCol, options);
+      if (root === undefined) {
+        return current.getSuggestions(lines, cursorLine, cursorCol, options);
+      }
       const ownItems = completeRoots(session.references, root.query);
       const delegated = await current.getSuggestions(lines, cursorLine, cursorCol, options);
-      if (options.signal.aborted) return delegated;
+      if (options.signal.aborted) {
+        return delegated;
+      }
       const delegatedItems = delegated?.prefix === root.prefix ? delegated.items : [];
       const items = [...ownItems, ...delegatedItems].slice(0, MAX_SUGGESTIONS);
       return items.length === 0 ? delegated : { prefix: root.prefix, items };
@@ -98,9 +104,13 @@ function completeRoots(
 /** Complete only tracked/visible paths in one exact ready Alias. */
 function completeChild(session: RepositoryReferencesSession, token: ChildToken): AutocompleteSuggestions | null {
   const runtime = session.references.get(token.alias);
-  if (runtime === undefined || runtimeRoot(runtime) === undefined) return null;
+  if (runtime === undefined || runtimeRoot(runtime) === undefined) {
+    return null;
+  }
   const index = runtimeIndex(runtime);
-  if (index === undefined) return null;
+  if (index === undefined) {
+    return null;
+  }
   const candidates = [...[...index.directories].map((path) => `${path}/`), ...index.files];
   const ranked = token.query.length === 0 ? candidates : fuzzyFilter(candidates, token.query, (path) => path);
   const items = ranked.slice(0, MAX_SUGGESTIONS).map((path) => childItem(token.alias, path));

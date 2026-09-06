@@ -42,8 +42,12 @@ const SubprocessResultSchema = Type.Object({
 type SubprocessResult = Static<typeof SubprocessResultSchema>;
 
 afterEach(async () => {
-  for (const child of childProcesses.splice(0)) await stopChild(child);
-  for (const server of servers.splice(0)) await closeServer(server);
+  for (const child of childProcesses.splice(0)) {
+    await stopChild(child);
+  }
+  for (const server of servers.splice(0)) {
+    await closeServer(server);
+  }
   await Promise.all(temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
 
@@ -56,7 +60,9 @@ describe("Managed Checkout process and network integration", () => {
     const request = { repository, configuredRef: undefined };
 
     const initial = await store.publish(request, "ensure");
-    if (initial.status === "error") throw initial.error;
+    if (initial.status === "error") {
+      throw initial.error;
+    }
     expect(await readFile(join(initial.value.root, "main.txt"), "utf8")).toBe("one\n");
 
     await writeFile(join(fixture.work, "main.txt"), "two\n");
@@ -71,14 +77,22 @@ describe("Managed Checkout process and network integration", () => {
     const observedRoots = new Set([initial.value.root]);
     while (!settled) {
       const opened = await store.open(request);
-      if (opened.status === "error") throw opened.error;
-      if (opened.value !== undefined) observedRoots.add(opened.value.root);
+      if (opened.status === "error") {
+        throw opened.error;
+      }
+      if (opened.value !== undefined) {
+        observedRoots.add(opened.value.root);
+      }
       await new Promise<void>((resolve_) => setImmediate(resolve_));
     }
     const refreshed = await refresh;
-    if (refreshed.status === "error") throw refreshed.error;
+    if (refreshed.status === "error") {
+      throw refreshed.error;
+    }
     const final = await store.open(request);
-    if (final.status === "error" || final.value === undefined) throw new Error("Expected final checkout");
+    if (final.status === "error" || final.value === undefined) {
+      throw new Error("Expected final checkout");
+    }
     observedRoots.add(final.value.root);
 
     expect(await readFile(join(final.value.root, "main.txt"), "utf8")).toBe("two\n");
@@ -110,7 +124,9 @@ describe("Managed Checkout process and network integration", () => {
     const repository = sourceWithClonePath(fixture.bare);
     const request = { repository, configuredRef: undefined };
     const initial = await store.publish(request, "ensure");
-    if (initial.status === "error") throw initial.error;
+    if (initial.status === "error") {
+      throw initial.error;
+    }
 
     const hanging = await startHangingServer();
     const hangingSource: RepositorySource = {
@@ -122,7 +138,9 @@ describe("Managed Checkout process and network integration", () => {
     const reopened = await store.open(request);
 
     expect(timedOut.status).toBe("error");
-    if (timedOut.status === "error") expect(timedOut.error._tag).toBe("GitTimeoutError");
+    if (timedOut.status === "error") {
+      expect(timedOut.error._tag).toBe("GitTimeoutError");
+    }
     expect(reopened).toMatchObject({ status: "ok", value: { root: initial.value.root } });
   });
 });
@@ -209,7 +227,9 @@ async function startHangingServer(): Promise<{ readonly server: Server; readonly
   await listen(server, 0);
   servers.push(server);
   const address = server.address();
-  if (!Value.Check(TcpAddressSchema, address)) throw new Error("Expected TCP address");
+  if (!Value.Check(TcpAddressSchema, address)) {
+    throw new Error("Expected TCP address");
+  }
   return { server, port: address.port };
 }
 
@@ -217,14 +237,18 @@ async function reservePort(): Promise<number> {
   const server = createServer();
   await listen(server, 0);
   const address = server.address();
-  if (!Value.Check(TcpAddressSchema, address)) throw new Error("Expected TCP address");
+  if (!Value.Check(TcpAddressSchema, address)) {
+    throw new Error("Expected TCP address");
+  }
   await closeServer(server);
   return address.port;
 }
 
 async function waitForPort(port: number, child: ChildProcess): Promise<void> {
   for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (child.exitCode !== null) throw new Error(`git daemon exited with ${String(child.exitCode)}`);
+    if (child.exitCode !== null) {
+      throw new Error(`git daemon exited with ${String(child.exitCode)}`);
+    }
     const connected = await new Promise<boolean>((resolve_) => {
       const socket = new Socket();
       socket.once("connect", () => {
@@ -234,7 +258,9 @@ async function waitForPort(port: number, child: ChildProcess): Promise<void> {
       socket.once("error", () => resolve_(false));
       socket.connect(port, "127.0.0.1");
     });
-    if (connected) return;
+    if (connected) {
+      return;
+    }
     await new Promise((resolve_) => setTimeout(resolve_, 20));
   }
   throw new Error("git daemon did not start");
@@ -251,13 +277,19 @@ function listen(server: Server, port: number): Promise<void> {
 }
 
 async function closeServer(server: Server): Promise<void> {
-  for (const socket of serverSockets.get(server) ?? []) socket.destroy();
-  if (!server.listening) return;
+  for (const socket of serverSockets.get(server) ?? []) {
+    socket.destroy();
+  }
+  if (!server.listening) {
+    return;
+  }
   await new Promise<void>((resolve_) => server.close(() => resolve_()));
 }
 
 async function stopChild(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null) return;
+  if (child.exitCode !== null) {
+    return;
+  }
   child.kill("SIGTERM");
   await new Promise<void>((resolve_) => {
     child.once("exit", () => resolve_());
@@ -270,7 +302,9 @@ async function stopChild(child: ChildProcess): Promise<void> {
 
 function parsedSource(input: string): RepositorySource {
   const parsed = parseRepositorySource(input);
-  if (parsed.status === "error") throw parsed.error;
+  if (parsed.status === "error") {
+    throw parsed.error;
+  }
   return parsed.value;
 }
 
@@ -281,7 +315,9 @@ function sourceWithClonePath(path: string): RepositorySource {
 
 function parseSubprocessResult(output: string): SubprocessResult {
   const decoded: unknown = JSON.parse(output);
-  if (!Value.Check(SubprocessResultSchema, decoded)) throw new Error("Invalid subprocess result");
+  if (!Value.Check(SubprocessResultSchema, decoded)) {
+    throw new Error("Invalid subprocess result");
+  }
   return decoded;
 }
 

@@ -151,7 +151,9 @@ describe("Managed Checkout publication", () => {
     const initialMain = await revision(fixture.work, "main");
     const request = { repository: fixture.repository, configuredRef: "v1" };
     const initial = await publishManagedCheckout(storage, request, "ensure");
-    if (initial.status === "error") throw initial.error;
+    if (initial.status === "error") {
+      throw initial.error;
+    }
 
     await writeFile(join(fixture.work, "main.txt"), "main two\n");
     await git(fixture.work, "add", ".");
@@ -190,7 +192,9 @@ describe("Managed Checkout publication", () => {
     const storage = createStorage(fixture.workspace);
     const request = { repository: fixture.repository, configuredRef: undefined };
     const initial = await publishManagedCheckout(storage, request, "ensure");
-    if (initial.status === "error") throw initial.error;
+    if (initial.status === "error") {
+      throw initial.error;
+    }
     await rm(storage.cacheRoot, { recursive: true, force: true });
 
     const recreated = await publishManagedCheckout(storage, request, "ensure");
@@ -206,7 +210,9 @@ describe("Managed Checkout publication", () => {
     const storage = createStorage(fixture.workspace);
     const request = { repository: fixture.repository, configuredRef: undefined };
     const initial = await publishManagedCheckout(storage, request, "ensure");
-    if (initial.status === "error") throw initial.error;
+    if (initial.status === "error") {
+      throw initial.error;
+    }
     await rename(fixture.bare, `${fixture.bare}.unavailable`);
 
     const attemptedAt = new Date("2026-02-03T04:05:06.000Z");
@@ -233,7 +239,9 @@ describe("Managed Checkout publication", () => {
     const storage = createStorage(fixture.workspace);
     const request = { repository: fixture.repository, configuredRef: undefined };
     const initial = await publishManagedCheckout(storage, request, "ensure");
-    if (initial.status === "error") throw initial.error;
+    if (initial.status === "error") {
+      throw initial.error;
+    }
     const unavailableRemote = `${fixture.bare}.unavailable`;
     await rename(fixture.bare, unavailableRemote);
 
@@ -241,7 +249,9 @@ describe("Managed Checkout publication", () => {
     const reopened = await openManagedCheckout(storage, request);
 
     expect(refreshed.status).toBe("error");
-    if (refreshed.status === "error") expect(refreshed.error._tag).toBe("GitFetchError");
+    if (refreshed.status === "error") {
+      expect(refreshed.error._tag).toBe("GitFetchError");
+    }
     expect(reopened).toMatchObject({
       status: "ok",
       value: { root: initial.value.root, metadata: { resolvedCommit: initial.value.metadata.resolvedCommit } },
@@ -253,7 +263,9 @@ describe("Managed Checkout publication", () => {
     const storage = createStorage(fixture.workspace);
     const request = { repository: fixture.repository, configuredRef: undefined };
     const initial = await publishManagedCheckout(storage, request, "ensure");
-    if (initial.status === "error") throw initial.error;
+    if (initial.status === "error") {
+      throw initial.error;
+    }
     await git(fixture.work, "checkout", "main");
     await writeFile(join(fixture.work, "main.txt"), "main changed\n");
     await git(fixture.work, "add", ".");
@@ -287,7 +299,9 @@ describe("Managed Checkout publication", () => {
     const reopened = await openManagedCheckout(storage, request);
 
     expect(refreshed.status).toBe("error");
-    if (refreshed.status === "error") expect(refreshed.error._tag).toBe("CacheMetadataWriteError");
+    if (refreshed.status === "error") {
+      expect(refreshed.error._tag).toBe("CacheMetadataWriteError");
+    }
     expect(reopened).toMatchObject({
       status: "ok",
       value: { root: initial.value.root, metadata: { resolvedCommit: initial.value.metadata.resolvedCommit } },
@@ -303,7 +317,9 @@ describe("Managed Checkout publication", () => {
     const opened = await openManagedCheckout(storage, request);
 
     expect(published.status).toBe("error");
-    if (published.status === "error") expect(published.error._tag).toBe("GitRefResolutionError");
+    if (published.status === "error") {
+      expect(published.error._tag).toBe("GitRefResolutionError");
+    }
     expect(opened).toEqual({ status: "ok", value: undefined });
   });
 });
@@ -339,7 +355,9 @@ describe("Managed Git failure classification", () => {
 
   test("classifies authentication, timeout, and killed clone failures without credentials", async () => {
     const credentialSource = parseRepositorySource("https://token@example.com/owner/repo.git");
-    if (credentialSource.status === "error") throw credentialSource.error;
+    if (credentialSource.status === "error") {
+      throw credentialSource.error;
+    }
     const cases = [
       {
         processOutput: output(128, "fatal: Authentication failed for 'https://token@example.com/owner/repo.git'"),
@@ -402,7 +420,9 @@ describe("Managed Checkout identity and metadata", () => {
   test("keeps cache keys stable across normalized source spellings and distinct across refs", () => {
     const left = parseRepositorySource("https://GitHub.com/owner/repo.git/");
     const right = parseRepositorySource("https://github.com/owner/repo");
-    if (left.status === "error" || right.status === "error") throw new Error("Expected parsed sources");
+    if (left.status === "error" || right.status === "error") {
+      throw new Error("Expected parsed sources");
+    }
 
     expect(makeCacheKey(left.value, undefined)).toBe(makeCacheKey(right.value, undefined));
     expect(makeCacheKey(left.value, undefined)).not.toBe(makeCacheKey(right.value, "main"));
@@ -433,7 +453,9 @@ describe("Managed Checkout identity and metadata", () => {
     });
 
     expect(malformed.status).toBe("error");
-    if (malformed.status === "error") expect(malformed.error._tag).toBe("CacheMetadataParseError");
+    if (malformed.status === "error") {
+      expect(malformed.error._tag).toBe("CacheMetadataParseError");
+    }
     expect(unavailable.status).toBe("error");
     if (unavailable.status === "error") {
       expect(unavailable.error._tag).toBe("CacheMetadataReadError");
@@ -446,7 +468,9 @@ describe("Managed Checkout identity and metadata", () => {
     const storage = createStorage(fixture.workspace);
     const request = { repository: fixture.repository, configuredRef: undefined };
     const initial = await publishManagedCheckout(storage, request, "ensure");
-    if (initial.status === "error") throw initial.error;
+    if (initial.status === "error") {
+      throw initial.error;
+    }
     const outside = join(fixture.workspace, "outside");
     await mkdir(outside);
     await rm(initial.value.root, { recursive: true, force: true });
@@ -463,7 +487,9 @@ describe("Managed Checkout identity and metadata", () => {
       }
     }
     expect(published.status).toBe("error");
-    if (published.status === "error") expect(published.error._tag).toBe("CacheMetadataParseError");
+    if (published.status === "error") {
+      expect(published.error._tag).toBe("CacheMetadataParseError");
+    }
   });
 
   test("does not treat selected-checkout permission failures as repairable absence", async () => {
@@ -471,7 +497,9 @@ describe("Managed Checkout identity and metadata", () => {
     const storage = createStorage(fixture.workspace);
     const request = { repository: fixture.repository, configuredRef: undefined };
     const initial = await publishManagedCheckout(storage, request, "ensure");
-    if (initial.status === "error") throw initial.error;
+    if (initial.status === "error") {
+      throw initial.error;
+    }
     const selectedPath = join(
       storage.cacheRoot,
       "entries",
@@ -500,7 +528,9 @@ describe("Managed Checkout identity and metadata", () => {
       expect(opened.error.cause).toBe(cause);
     }
     expect(published.status).toBe("error");
-    if (published.status === "error") expect(published.error).toBe(fileSystemError);
+    if (published.status === "error") {
+      expect(published.error).toBe(fileSystemError);
+    }
   });
 });
 
@@ -545,7 +575,9 @@ async function createRemoteFixture() {
 
 function remoteSource(localClonePath: string): RepositorySource {
   const parsed = parseRepositorySource("https://example.invalid/owner/repo.git");
-  if (parsed.status === "error") throw parsed.error;
+  if (parsed.status === "error") {
+    throw parsed.error;
+  }
   return {
     ...parsed.value,
     cloneSource: testCast<string, RepositoryCloneSource>(localClonePath),
@@ -574,7 +606,9 @@ async function gitOutput(cwd: string, ...arguments_: ReadonlyArray<string>): Pro
   try {
     return (await executeFile("git", arguments_, { cwd })).stdout;
   } catch (error) {
-    if (arguments_.includes("symbolic-ref")) return "";
+    if (arguments_.includes("symbolic-ref")) {
+      return "";
+    }
     throw error;
   }
 }

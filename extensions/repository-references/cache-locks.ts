@@ -42,12 +42,16 @@ async function acquireLock(
         message: `Could not acquire Managed Checkout lock ${cacheKey}`,
       }),
   });
-  if (acquired.status === "error") return acquired;
+  if (acquired.status === "error") {
+    return acquired;
+  }
 
   let released = false;
   return Result.ok({
     release: async () => {
-      if (released) return Result.ok(undefined);
+      if (released) {
+        return Result.ok(undefined);
+      }
       const result = await Result.tryPromise({
         try: () => acquired.value(),
         catch: (cause) =>
@@ -58,7 +62,9 @@ async function acquireLock(
             message: `Could not release Managed Checkout lock ${cacheKey}`,
           }),
       });
-      if (result.status === "ok") released = true;
+      if (result.status === "ok") {
+        released = true;
+      }
       return result;
     },
   });

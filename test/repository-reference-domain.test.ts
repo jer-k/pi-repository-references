@@ -18,7 +18,9 @@ describe("Alias", () => {
     const result = parseAlias(input);
 
     expect(result.status).toBe("ok");
-    if (result.status === "ok") expect(renderAlias(result.value)).toBe(input);
+    if (result.status === "ok") {
+      expect(renderAlias(result.value)).toBe(input);
+    }
   });
 
   test.each(["", "Effect", "@effect", "-effect", "effect/path", "two words"])(
@@ -27,7 +29,9 @@ describe("Alias", () => {
       const result = parseAlias(input);
 
       expect(result.status).toBe("error");
-      if (result.status === "error") expect(result.error._tag).toBe("InvalidAliasError");
+      if (result.status === "error") {
+        expect(result.error._tag).toBe("InvalidAliasError");
+      }
     }
   );
 });
@@ -41,14 +45,18 @@ describe("TTL durations and Refresh Policies", () => {
     const result = parseDuration(input);
 
     expect(result.status).toBe("ok");
-    if (result.status === "ok") expect(result.value.milliseconds).toBe(milliseconds);
+    if (result.status === "ok") {
+      expect(result.value.milliseconds).toBe(milliseconds);
+    }
   });
 
   test.each(["0m", "1s", "1.5h", "-1d", " 1h", "9007199254740991d"])("rejects invalid duration %s", (input) => {
     const result = parseDuration(input);
 
     expect(result.status).toBe("error");
-    if (result.status === "error") expect(result.error._tag).toBe("InvalidDurationError");
+    if (result.status === "error") {
+      expect(result.error._tag).toBe("InvalidDurationError");
+    }
   });
 
   test("parses session, manual, and TTL policies", () => {
@@ -218,7 +226,9 @@ describe("repository sources", () => {
       const result = parseRepositorySource(input);
 
       expect(result.status).toBe("error");
-      if (result.status === "error") expect(result.error._tag).toBe("RepositorySourceParseError");
+      if (result.status === "error") {
+        expect(result.error._tag).toBe("RepositorySourceParseError");
+      }
     }
   );
 });

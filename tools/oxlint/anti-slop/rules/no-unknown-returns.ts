@@ -14,8 +14,12 @@ type FunctionWithReturnType =
   | ESTree.TSMethodSignature;
 
 function referencedAliasName(type: ESTree.TSType): string | null {
-  if (type.type === "TSParenthesizedType") return referencedAliasName(type.typeAnnotation);
-  if (type.type !== "TSTypeReference" || type.typeName.type !== "Identifier") return null;
+  if (type.type === "TSParenthesizedType") {
+    return referencedAliasName(type.typeAnnotation);
+  }
+  if (type.type !== "TSTypeReference" || type.typeName.type !== "Identifier") {
+    return null;
+  }
   return type.typeArguments === null ||
     type.typeArguments === undefined ||
     type.typeArguments.params.length === 0
@@ -44,7 +48,9 @@ export const noUnknownReturnsRule = defineRule({
       shadowedAliases: ReadonlySet<string>,
       visited = new Set<string>(),
     ): boolean => {
-      if (type.type === "TSUnknownKeyword") return true;
+      if (type.type === "TSUnknownKeyword") {
+        return true;
+      }
       if (type.type === "TSParenthesizedType") {
         return resolvesToUnknown(type.typeAnnotation, shadowedAliases, visited);
       }
@@ -62,7 +68,9 @@ export const noUnknownReturnsRule = defineRule({
         return value !== undefined && resolvesToUnknown(value, shadowedAliases, visited);
       }
       const name = referencedAliasName(type);
-      if (name === null || visited.has(name) || shadowedAliases.has(name)) return false;
+      if (name === null || visited.has(name) || shadowedAliases.has(name)) {
+        return false;
+      }
       const alias = aliases.get(name);
       if (
         alias === undefined ||
@@ -77,7 +85,9 @@ export const noUnknownReturnsRule = defineRule({
 
     const checkReturnType = (node: FunctionWithReturnType) => {
       const annotation = node.returnType;
-      if (annotation === null || annotation === undefined) return;
+      if (annotation === null || annotation === undefined) {
+        return;
+      }
       if (
         !resolvesToUnknown(
           annotation.typeAnnotation,

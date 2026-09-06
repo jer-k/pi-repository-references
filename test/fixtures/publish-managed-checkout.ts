@@ -16,10 +16,14 @@ import { parseRepositorySource } from "../../extensions/repository-references/re
 import { testCast } from "../test-cast.ts";
 
 const [cacheRoot, clonePath] = process.argv.slice(2);
-if (cacheRoot === undefined || clonePath === undefined) throw new Error("Expected cache root and clone path");
+if (cacheRoot === undefined || clonePath === undefined) {
+  throw new Error("Expected cache root and clone path");
+}
 
 const parsed = parseRepositorySource("https://example.invalid/concurrent/repository.git");
-if (parsed.status === "error") throw parsed.error;
+if (parsed.status === "error") {
+  throw parsed.error;
+}
 const repository: RepositorySource = {
   ...parsed.value,
   cloneSource: testCast<string, RepositoryCloneSource>(clonePath),

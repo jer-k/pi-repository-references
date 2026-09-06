@@ -28,17 +28,29 @@ function tryFileSystem<T>(
 
 /** Project Node's filesystem metadata into the portable filesystem port. */
 function kindOfStats(stats: Stats): RepositoryDirectoryEntry["kind"] {
-  if (stats.isFile()) return "file";
-  if (stats.isDirectory()) return "directory";
-  if (stats.isSymbolicLink()) return "symbolic-link";
+  if (stats.isFile()) {
+    return "file";
+  }
+  if (stats.isDirectory()) {
+    return "directory";
+  }
+  if (stats.isSymbolicLink()) {
+    return "symbolic-link";
+  }
   return "other";
 }
 
 /** Project a Node directory entry into the portable filesystem port. */
 function toDirectoryEntry(entry: Dirent): RepositoryDirectoryEntry {
-  if (entry.isFile()) return { name: entry.name, kind: "file" };
-  if (entry.isDirectory()) return { name: entry.name, kind: "directory" };
-  if (entry.isSymbolicLink()) return { name: entry.name, kind: "symbolic-link" };
+  if (entry.isFile()) {
+    return { name: entry.name, kind: "file" };
+  }
+  if (entry.isDirectory()) {
+    return { name: entry.name, kind: "directory" };
+  }
+  if (entry.isSymbolicLink()) {
+    return { name: entry.name, kind: "symbolic-link" };
+  }
   return { name: entry.name, kind: "other" };
 }
 

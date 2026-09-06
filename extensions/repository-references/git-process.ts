@@ -41,8 +41,12 @@ function executeGit(request: GitProcessRequest): Promise<ResultType<GitProcessOu
 
     child.once("error", (cause) => {
       clearTimeout(timeout);
-      if (hardKill !== undefined) clearTimeout(hardKill);
-      if (settled) return;
+      if (hardKill !== undefined) {
+        clearTimeout(hardKill);
+      }
+      if (settled) {
+        return;
+      }
       settled = true;
       complete(
         Result.err(
@@ -57,8 +61,12 @@ function executeGit(request: GitProcessRequest): Promise<ResultType<GitProcessOu
 
     child.once("close", (exitCode, signal) => {
       clearTimeout(timeout);
-      if (hardKill !== undefined) clearTimeout(hardKill);
-      if (settled) return;
+      if (hardKill !== undefined) {
+        clearTimeout(hardKill);
+      }
+      if (settled) {
+        return;
+      }
       settled = true;
       complete(
         Result.ok({

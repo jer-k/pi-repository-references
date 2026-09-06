@@ -30,7 +30,9 @@ function hasSafetyComment(sourceCode: SourceCode, node: TypeAssertion): boolean 
     ) {
       return true;
     }
-    if (commentOwnerKinds.has(current.type) || current.parent.type === "Program") return false;
+    if (commentOwnerKinds.has(current.type) || current.parent.type === "Program") {
+      return false;
+    }
     current = current.parent;
   }
 }
@@ -50,7 +52,9 @@ export const requireSafetyCommentForTypeAssertionRule = defineRule({
   },
   createOnce(context) {
     const checkAssertion = (node: TypeAssertion) => {
-      if (isConstAssertion(node) || hasSafetyComment(context.sourceCode, node)) return;
+      if (isConstAssertion(node) || hasSafetyComment(context.sourceCode, node)) {
+        return;
+      }
       context.report({ node, messageId: "missingSafetyComment" });
     };
 

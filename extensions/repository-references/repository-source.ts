@@ -36,10 +36,14 @@ export function parseRepositorySource(input: string): ResultType<RepositorySourc
     return invalidSource("repository source must be non-empty and have no surrounding whitespace");
   }
 
-  if (looksLikeUrl(source)) return parseUrlSource(source);
+  if (looksLikeUrl(source)) {
+    return parseUrlSource(source);
+  }
 
   const scpSource = parseScpSource(source);
-  if (scpSource !== undefined) return Result.ok(scpSource);
+  if (scpSource !== undefined) {
+    return Result.ok(scpSource);
+  }
 
   const shorthand = source.replace(/\/+$/u, "");
   const segments = shorthand.split("/");
@@ -78,7 +82,9 @@ export function revealRepositoryCloneSource(source: RepositoryCloneSource): stri
 
 /** Parse one supported absolute URL source. */
 function parseUrlSource(input: string): ResultType<RepositorySource, RepositorySourceParseError> {
-  if (!URL.canParse(input)) return invalidSource("invalid repository URL");
+  if (!URL.canParse(input)) {
+    return invalidSource("invalid repository URL");
+  }
   const parsed = new URL(input);
 
   const transport = URL_PROTOCOLS.get(parsed.protocol);
@@ -99,7 +105,9 @@ function parseUrlSource(input: string): ResultType<RepositorySource, RepositoryS
 /** Parse SCP-style SSH syntax when the input is unambiguous. */
 function parseScpSource(input: string): RepositorySource | undefined {
   const separator = input.indexOf(":");
-  if (separator <= 0 || input.includes("://")) return undefined;
+  if (separator <= 0 || input.includes("://")) {
+    return undefined;
+  }
 
   const authority = input.slice(0, separator);
   const repositoryPath = input.slice(separator + 1);
@@ -118,7 +126,9 @@ function parseScpSource(input: string): RepositorySource | undefined {
   }
 
   const normalizedPath = normalizePath(repositoryPath);
-  if (normalizedPath.length === 0) return undefined;
+  if (normalizedPath.length === 0) {
+    return undefined;
+  }
   const normalizedAuthority = `${username.length > 0 ? `${username}@` : ""}${host.toLowerCase()}`;
   return makeSource("ssh", input, `ssh://${normalizedAuthority}/${normalizedPath}`);
 }

@@ -54,7 +54,9 @@ export const DEFAULT_REFRESH_POLICY: TtlRefreshPolicy = {
  * applies to every automatic policy and expires exactly fifteen minutes after that attempt.
  */
 export function decideAutomaticRefresh(input: AutomaticRefreshInput): AutomaticRefreshDecision {
-  if (input.policy._tag === "manual") return { _tag: "skip", reason: "manual" };
+  if (input.policy._tag === "manual") {
+    return { _tag: "skip", reason: "manual" };
+  }
   if (input.policy._tag === "session" && input.sessionAttempted) {
     return { _tag: "skip", reason: "session-already-attempted" };
   }
@@ -65,7 +67,9 @@ export function decideAutomaticRefresh(input: AutomaticRefreshInput): AutomaticR
   if (lastAttemptFailed && input.now.getTime() - lastAttempt < AUTOMATIC_REFRESH_COOLDOWN_MILLISECONDS) {
     return { _tag: "skip", reason: "failure-cooldown" };
   }
-  if (input.policy._tag === "session") return { _tag: "refresh" };
+  if (input.policy._tag === "session") {
+    return { _tag: "refresh" };
+  }
 
   if (lastSuccess === undefined || input.now.getTime() - lastSuccess > input.policy.ttl.milliseconds) {
     return { _tag: "refresh" };
@@ -107,8 +111,12 @@ export function parseRefreshPolicy(
 
 /** Convert a schema-parsed policy protocol into the domain policy. */
 function parseRefreshPolicyProtocol(input: RefreshPolicyProtocol): ResultType<RefreshPolicy, InvalidDurationError> {
-  if (input.policy === "session") return Result.ok({ _tag: "session" });
-  if (input.policy === "manual") return Result.ok({ _tag: "manual" });
+  if (input.policy === "session") {
+    return Result.ok({ _tag: "session" });
+  }
+  if (input.policy === "manual") {
+    return Result.ok({ _tag: "manual" });
+  }
 
   const duration = parseDuration(input.ttl);
   return duration.status === "error" ? duration : Result.ok({ _tag: "ttl", ttl: duration.value });
@@ -116,7 +124,9 @@ function parseRefreshPolicyProtocol(input: RefreshPolicyProtocol): ResultType<Re
 
 /** Parse a validated durable instant defensively for pure policy callers. */
 function parseInstant(input: string | undefined): number | undefined {
-  if (input === undefined) return undefined;
+  if (input === undefined) {
+    return undefined;
+  }
   const value = Date.parse(input);
   return Number.isFinite(value) ? value : undefined;
 }

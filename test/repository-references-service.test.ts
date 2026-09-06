@@ -108,7 +108,9 @@ describe("Local Reference tool-path service", () => {
     const result = await resolveSessionReadPath(fixture.session, "@remote/src/file.ts", fixture.fileSystem);
 
     expect(result.status).toBe("error");
-    if (result.status === "error") expect(result.error._tag).toBe("ReferenceUnavailableError");
+    if (result.status === "error") {
+      expect(result.error._tag).toBe("ReferenceUnavailableError");
+    }
   });
 });
 
@@ -147,8 +149,12 @@ async function createSessionFixture() {
     fullFileSystem: fileSystem,
     git: createNodeGitProcess(),
   });
-  if (started.status === "error") throw started.error;
+  if (started.status === "error") {
+    throw started.error;
+  }
   const source = started.value.references.get("source");
-  if (source === undefined || source._tag !== "ready-local") throw new Error("Expected ready Local Reference");
+  if (source === undefined || source._tag !== "ready-local") {
+    throw new Error("Expected ready Local Reference");
+  }
   return { workspace, repository: source.local.root, fileSystem, session: started.value };
 }

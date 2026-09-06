@@ -72,7 +72,9 @@ export async function readCacheMetadata(
 ): Promise<ResultType<CacheMetadata | undefined, CacheMetadataReadError | CacheMetadataParseError>> {
   const read = await fileSystem.readTextFile(path);
   if (read.status === "error") {
-    if (isMissingCause(read.error.cause)) return Result.ok(undefined);
+    if (isMissingCause(read.error.cause)) {
+      return Result.ok(undefined);
+    }
     return Result.err(
       new CacheMetadataReadError({
         path,
@@ -92,7 +94,9 @@ export async function readCacheMetadata(
         message: `Managed Checkout metadata at ${path} is not valid JSON`,
       }),
   });
-  if (decoded.status === "error") return decoded;
+  if (decoded.status === "error") {
+    return decoded;
+  }
   if (!Value.Check(metadataSchema, decoded.value)) {
     const issue = [...Value.Errors(metadataSchema, decoded.value)][0];
     return Result.err(
@@ -130,7 +134,9 @@ export async function writeCacheMetadata(
 ): Promise<ResultType<void, CacheMetadataWriteError>> {
   const temporaryPath = `${path}.${temporarySuffix}.tmp`;
   const written = await fileSystem.writeTextFile(temporaryPath, `${JSON.stringify(metadata, undefined, 2)}\n`);
-  if (written.status === "error") return metadataWriteFailure(path, written.error);
+  if (written.status === "error") {
+    return metadataWriteFailure(path, written.error);
+  }
 
   const renamed = await fileSystem.rename(temporaryPath, path);
   if (renamed.status === "error") {

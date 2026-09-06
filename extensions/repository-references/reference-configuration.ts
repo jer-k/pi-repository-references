@@ -164,13 +164,17 @@ export async function loadRepositoryReferencesConfiguration(
 ): Promise<ResultType<RepositoryReferencesConfiguration, ConfigurationLoadError>> {
   const globalPath = join(options.agentDirectory, CONFIG_FILE_NAME);
   const globalDocument = await readOptionalDocument(globalPath, options);
-  if (globalDocument.status === "error") return globalDocument;
+  if (globalDocument.status === "error") {
+    return globalDocument;
+  }
 
   let projectDocument: ParsedConfigurationDocument | undefined;
   if (options.projectTrusted) {
     const projectPath = join(options.cwd, options.configDirectoryName ?? CONFIG_DIR_NAME, CONFIG_FILE_NAME);
     const loadedProject = await readOptionalDocument(projectPath, options);
-    if (loadedProject.status === "error") return loadedProject;
+    if (loadedProject.status === "error") {
+      return loadedProject;
+    }
     projectDocument = loadedProject.value;
   }
 
@@ -218,7 +222,9 @@ function parseConfigurationProtocol(
       return validationError(configurationPath, `references.${aliasInput}`, alias.error.message);
     }
     const reference = parseReferenceProtocol(alias.value, referenceInput, configurationPath, homeDirectory);
-    if (reference.status === "error") return reference;
+    if (reference.status === "error") {
+      return reference;
+    }
     references.set(aliasInput, reference.value);
   }
 
@@ -308,13 +314,17 @@ async function readOptionalDocument(
         message: `Could not parse Repository References configuration ${path} as JSON`,
       }),
   });
-  if (json.status === "error") return json;
+  if (json.status === "error") {
+    return json;
+  }
   return parseConfigurationDocument(json.value, path, options.homeDirectory);
 }
 
 /** Resolve absolute, home-relative, and configuration-directory-relative Local paths. */
 function resolveLocalPath(input: string, configurationDirectory: string, homeDirectory: string): string {
-  if (input === "~") return resolve(homeDirectory);
+  if (input === "~") {
+    return resolve(homeDirectory);
+  }
   if (input.startsWith("~/") || input.startsWith("~\\")) {
     return resolve(homeDirectory, input.slice(2));
   }

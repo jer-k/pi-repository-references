@@ -77,7 +77,9 @@ function parseRefreshArguments(
   | { readonly _tag: "valid"; readonly alias: string | undefined }
   | { readonly _tag: "invalid"; readonly message: string } {
   const trimmed = input.trim();
-  if (trimmed.length === 0) return { _tag: "valid", alias: undefined };
+  if (trimmed.length === 0) {
+    return { _tag: "valid", alias: undefined };
+  }
   if (trimmed.includes(" ") || trimmed.startsWith("@")) {
     return { _tag: "invalid", message: "Usage: /references-refresh [alias] (use the bare Alias without @)" };
   }
@@ -89,7 +91,9 @@ function completeAlias(
   argumentPrefix: string,
   session: RepositoryReferencesSession | undefined
 ): AutocompleteItem[] | null {
-  if (session === undefined || argumentPrefix.trim() !== argumentPrefix || argumentPrefix.includes(" ")) return null;
+  if (session === undefined || argumentPrefix.trim() !== argumentPrefix || argumentPrefix.includes(" ")) {
+    return null;
+  }
   const candidates = [...session.references].map(([alias, runtime]) => {
     const description = runtime.configuration.description;
     return description === undefined ? { value: alias, label: alias } : { value: alias, label: alias, description };
@@ -99,5 +103,7 @@ function completeAlias(
 
 /** Notify only through modes whose Pi context supports user-visible UI events. */
 function notify(context: ExtensionCommandContext, message: string, type: "info" | "warning" | "error"): void {
-  if (context.hasUI) context.ui.notify(message, type);
+  if (context.hasUI) {
+    context.ui.notify(message, type);
+  }
 }

@@ -90,7 +90,9 @@ test("blocks Pi edit and write tools through every normalized physical reference
   try {
     await resourceLoader.reload();
     const loaded = resourceLoader.getExtensions().extensions[0];
-    if (loaded === undefined) throw new Error("Expected loaded extension");
+    if (loaded === undefined) {
+      throw new Error("Expected loaded extension");
+    }
     const startupHandler = loaded.handlers.get("session_start")?.[0];
     await sessionStart(
       testCast<typeof startupHandler, SessionStartHandler | undefined>(startupHandler),
@@ -99,7 +101,9 @@ test("blocks Pi edit and write tools through every normalized physical reference
     );
     const loadedToolCallHandler = loaded.handlers.get("tool_call")?.[0];
     const handler = testCast<typeof loadedToolCallHandler, ToolCallHandler | undefined>(loadedToolCallHandler);
-    if (handler === undefined) throw new Error("Expected tool_call handler");
+    if (handler === undefined) {
+      throw new Error("Expected tool_call handler");
+    }
 
     const pathSpellings = [
       protectedFile,
@@ -131,8 +135,11 @@ test("blocks Pi edit and write tools through every normalized physical reference
     expect(await readFile(projectFile, "utf8")).toBe("project\n");
     expect(await readFile(join(project, "ordinary.txt"), "utf8")).toBe("ordinary\n");
   } finally {
-    if (previousAgentDirectory === undefined) delete process.env.PI_CODING_AGENT_DIR;
-    else process.env.PI_CODING_AGENT_DIR = previousAgentDirectory;
+    if (previousAgentDirectory === undefined) {
+      delete process.env.PI_CODING_AGENT_DIR;
+    } else {
+      process.env.PI_CODING_AGENT_DIR = previousAgentDirectory;
+    }
     await rm(workspace, { recursive: true, force: true });
   }
 });
@@ -222,8 +229,11 @@ test("retains exposed-root protection when reloaded configuration is unavailable
       await sessionShutdown(requiredHandler(reloaded, "session_shutdown"), reloadedContext, "reload");
     }
   } finally {
-    if (previousAgentDirectory === undefined) delete process.env.PI_CODING_AGENT_DIR;
-    else process.env.PI_CODING_AGENT_DIR = previousAgentDirectory;
+    if (previousAgentDirectory === undefined) {
+      delete process.env.PI_CODING_AGENT_DIR;
+    } else {
+      process.env.PI_CODING_AGENT_DIR = previousAgentDirectory;
+    }
     await rm(workspace, { recursive: true, force: true });
   }
 });
@@ -254,7 +264,9 @@ test("runs Local Reference commands and reconstructs autocomplete through Pi rel
   try {
     await resourceLoader.reload();
     let loaded = resourceLoader.getExtensions().extensions[0];
-    if (loaded === undefined) throw new Error("Expected loaded extension");
+    if (loaded === undefined) {
+      throw new Error("Expected loaded extension");
+    }
     const startupHandler = loaded.handlers.get("session_start")?.[0];
     await sessionStart(
       testCast<typeof startupHandler, SessionStartHandler | undefined>(startupHandler),
@@ -289,7 +301,9 @@ test("runs Local Reference commands and reconstructs autocomplete through Pi rel
     );
     await resourceLoader.reload();
     loaded = resourceLoader.getExtensions().extensions[0];
-    if (loaded === undefined) throw new Error("Expected reloaded extension");
+    if (loaded === undefined) {
+      throw new Error("Expected reloaded extension");
+    }
     const reloadHandler = loaded.handlers.get("session_start")?.[0];
     await sessionStart(
       testCast<typeof reloadHandler, SessionStartHandler | undefined>(reloadHandler),
@@ -305,8 +319,11 @@ test("runs Local Reference commands and reconstructs autocomplete through Pi rel
     const reloadedSuggestions = await reloadedProvider?.getSuggestions(["@oth"], 0, 4, completionOptions());
     expect(reloadedSuggestions?.items[0]?.value).toBe("@other/");
   } finally {
-    if (previousAgentDirectory === undefined) delete process.env.PI_CODING_AGENT_DIR;
-    else process.env.PI_CODING_AGENT_DIR = previousAgentDirectory;
+    if (previousAgentDirectory === undefined) {
+      delete process.env.PI_CODING_AGENT_DIR;
+    } else {
+      process.env.PI_CODING_AGENT_DIR = previousAgentDirectory;
+    }
     await rm(workspace, { recursive: true, force: true });
   }
 });
@@ -351,7 +368,9 @@ function requiredHandler<Name extends keyof DirectExtensionHandlers>(
   name: Name
 ): DirectExtensionHandlers[Name] {
   const handler = handlers.get(name)?.[0];
-  if (handler === undefined) throw new Error(`Expected ${name} handler`);
+  if (handler === undefined) {
+    throw new Error(`Expected ${name} handler`);
+  }
   return testCast<typeof handler, DirectExtensionHandlers[Name]>(handler);
 }
 
@@ -447,7 +466,9 @@ async function sessionStart(
   context: ExtensionContext,
   reason: SessionStartEvent["reason"]
 ): Promise<void> {
-  if (handler === undefined) throw new Error("Expected session_start handler");
+  if (handler === undefined) {
+    throw new Error("Expected session_start handler");
+  }
   await handler({ type: "session_start", reason }, context);
 }
 
@@ -456,7 +477,9 @@ async function sessionShutdown(
   context: ExtensionContext,
   reason: SessionShutdownEvent["reason"]
 ): Promise<void> {
-  if (handler === undefined) throw new Error("Expected session_shutdown handler");
+  if (handler === undefined) {
+    throw new Error("Expected session_shutdown handler");
+  }
   await handler({ type: "session_shutdown", reason }, context);
 }
 

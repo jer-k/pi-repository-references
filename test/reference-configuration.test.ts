@@ -72,7 +72,9 @@ describe("strict version 1 configuration parsing", () => {
     const result = parseConfigurationDocument(input, "/config.json", "/home/person");
 
     expect(result.status).toBe("error");
-    if (result.status === "error") expect(result.error._tag).toBe(tag);
+    if (result.status === "error") {
+      expect(result.error._tag).toBe(tag);
+    }
   });
 
   test.each([
@@ -93,7 +95,9 @@ describe("strict version 1 configuration parsing", () => {
     const result = parseConfigurationDocument(input, "/config.json", "/home/person");
 
     expect(result.status).toBe("error");
-    if (result.status === "error") expect(result.error._tag).toBe("ConfigurationValidationError");
+    if (result.status === "error") {
+      expect(result.error._tag).toBe("ConfigurationValidationError");
+    }
   });
 
   test.each([{ Effect: { path: "." } }, { "@effect": { path: "." } }, { "-effect": { path: "." } }])(
@@ -208,7 +212,9 @@ describe("trust-aware configuration loading", () => {
     });
 
     expect(result.status).toBe("ok");
-    if (result.status === "ok") expect([...result.value.references.keys()]).toEqual(["global"]);
+    if (result.status === "ok") {
+      expect([...result.value.references.keys()]).toEqual(["global"]);
+    }
   });
 
   test("a malformed loaded project document disables the complete set with path and cause", async () => {

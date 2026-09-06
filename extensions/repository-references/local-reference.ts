@@ -42,23 +42,33 @@ export async function openLocalReference(
   }
 
   const kind = await options.fileSystem.entryKind(canonicalPath.value, "follow");
-  if (kind.status === "error") return invalidLocal(options, "unavailable", kind.error.cause);
-  if (kind.value !== "directory") return invalidLocal(options, "not-directory", undefined);
+  if (kind.status === "error") {
+    return invalidLocal(options, "unavailable", kind.error.cause);
+  }
+  if (kind.value !== "directory") {
+    return invalidLocal(options, "not-directory", undefined);
+  }
 
   const inside = await runGit(options, canonicalPath.value, ["rev-parse", "--is-inside-work-tree"]);
-  if (inside.status === "error") return inside;
+  if (inside.status === "error") {
+    return inside;
+  }
   if (inside.value.exitCode !== 0 || inside.value.standardOutput.trim() !== "true") {
     return invalidLocal(options, "not-git-working-tree", gitFailureCause(inside.value));
   }
 
   const bare = await runGit(options, canonicalPath.value, ["rev-parse", "--is-bare-repository"]);
-  if (bare.status === "error") return bare;
+  if (bare.status === "error") {
+    return bare;
+  }
   if (bare.value.exitCode !== 0 || bare.value.standardOutput.trim() === "true") {
     return invalidLocal(options, "bare-repository", gitFailureCause(bare.value));
   }
 
   const topLevel = await runGit(options, canonicalPath.value, ["rev-parse", "--show-toplevel"]);
-  if (topLevel.status === "error") return topLevel;
+  if (topLevel.status === "error") {
+    return topLevel;
+  }
   if (topLevel.value.exitCode !== 0) {
     return invalidLocal(options, "not-git-working-tree", gitFailureCause(topLevel.value));
   }

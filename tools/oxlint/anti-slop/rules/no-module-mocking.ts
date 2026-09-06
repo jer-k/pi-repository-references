@@ -11,14 +11,18 @@ function resolveVariable(
   let scope: Scope | null = sourceCode.getScope(identifier);
   while (scope !== null) {
     const variable = scope.set.get(identifier.name);
-    if (variable !== undefined) return variable;
+    if (variable !== undefined) {
+      return variable;
+    }
     scope = scope.upper;
   }
   return null;
 }
 
 function importedName(node: ESTree.Node): string | null {
-  if (node.type !== "ImportSpecifier") return null;
+  if (node.type !== "ImportSpecifier") {
+    return null;
+  }
   return node.imported.type === "Identifier" ? node.imported.name : node.imported.value;
 }
 
@@ -26,7 +30,9 @@ function isTestFrameworkObject(
   sourceCode: SourceCode,
   expression: ESTree.Expression,
 ): expression is ESTree.IdentifierReference {
-  if (expression.type !== "Identifier") return false;
+  if (expression.type !== "Identifier") {
+    return false;
+  }
   if (
     (expression.name === "vi" || expression.name === "jest") &&
     sourceCode.isGlobalReference(expression)
@@ -49,8 +55,12 @@ function isTestFrameworkObject(
 }
 
 function moduleMockCall(sourceCode: SourceCode, callee: ESTree.Expression): boolean {
-  if (!("property" in callee) || !("object" in callee) || !("computed" in callee)) return false;
-  if (!isTestFrameworkObject(sourceCode, callee.object)) return false;
+  if (!("property" in callee) || !("object" in callee) || !("computed" in callee)) {
+    return false;
+  }
+  if (!isTestFrameworkObject(sourceCode, callee.object)) {
+    return false;
+  }
   const property = callee.property;
   const method = callee.computed
     ? property.type === "Literal" &&
@@ -81,7 +91,9 @@ export const noModuleMockingRule = defineRule({
   createOnce(context) {
     return {
       CallExpression(node) {
-        if (node.callee.type === "Super" || node.callee.type === "V8IntrinsicExpression") return;
+        if (node.callee.type === "Super" || node.callee.type === "V8IntrinsicExpression") {
+          return;
+        }
         if (moduleMockCall(context.sourceCode, node.callee)) {
           context.report({ node, messageId: "moduleMock" });
         }

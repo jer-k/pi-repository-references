@@ -19,13 +19,20 @@ export function createReferenceWorkUx(context: Pick<ExtensionContext, "mode" | "
 
   return {
     onReferenceWork: (event) => {
-      if (!active) return;
-      if (event._tag === "started") activeWork.set(event.alias, event.operation);
-      else activeWork.delete(event.alias);
+      if (!active) {
+        return;
+      }
+      if (event._tag === "started") {
+        activeWork.set(event.alias, event.operation);
+      } else {
+        activeWork.delete(event.alias);
+      }
       if (context.mode === "tui") {
         context.ui.setStatus(REFERENCE_WORK_STATUS, renderActiveReferenceWork(activeWork));
       }
-      if (event.mode !== "automatic" || !context.hasUI) return;
+      if (event.mode !== "automatic" || !context.hasUI) {
+        return;
+      }
       if (event._tag === "succeeded" && event.operation === "clone") {
         context.ui.notify(`Repository Reference @${event.alias} is ready`, "info");
       }
@@ -36,7 +43,9 @@ export function createReferenceWorkUx(context: Pick<ExtensionContext, "mode" | "
     stop: () => {
       active = false;
       activeWork.clear();
-      if (context.mode === "tui") context.ui.setStatus(REFERENCE_WORK_STATUS, undefined);
+      if (context.mode === "tui") {
+        context.ui.setStatus(REFERENCE_WORK_STATUS, undefined);
+      }
     },
   };
 }

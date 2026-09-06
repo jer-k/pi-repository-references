@@ -64,7 +64,9 @@ export default function repositoryReferences(pi: ExtensionAPI): void {
   pi.on("session_start", async (_event, ctx) => {
     stopCurrentUx?.();
     stopCurrentUx = undefined;
-    if (session !== undefined) closeRepositoryReferencesSession(session);
+    if (session !== undefined) {
+      closeRepositoryReferencesSession(session);
+    }
     session = undefined;
     refreshOptions = undefined;
     exposedRoots.clear();
@@ -73,9 +75,13 @@ export default function repositoryReferences(pi: ExtensionAPI): void {
     const automaticAttempts = new Set<string>();
     const recentAttempts = new Map<string, Date>();
     for (const entry of ctx.sessionManager.getBranch()) {
-      if (entry.type !== "custom") continue;
+      if (entry.type !== "custom") {
+        continue;
+      }
       if (entry.customType === AUTOMATIC_ATTEMPT_ENTRY && Value.Check(AutomaticAttemptSchema, entry.data)) {
-        if (entry.data.runtimeToken !== runtimeToken) continue;
+        if (entry.data.runtimeToken !== runtimeToken) {
+          continue;
+        }
         automaticAttempts.add(entry.data.cacheKey);
         recentAttempts.set(entry.data.cacheKey, new Date(entry.data.attemptedAt));
       }
@@ -133,10 +139,14 @@ export default function repositoryReferences(pi: ExtensionAPI): void {
       onReferenceWork,
     });
     if (started.status === "error") {
-      if (ctx.hasUI) ctx.ui.notify(started.error.message, "error");
+      if (ctx.hasUI) {
+        ctx.ui.notify(started.error.message, "error");
+      }
       return;
     }
-    for (const root of exposedRoots) started.value.protectedRoots.add(root);
+    for (const root of exposedRoots) {
+      started.value.protectedRoots.add(root);
+    }
     session = started.value;
     if (ctx.mode === "tui") {
       ctx.ui.addAutocompleteProvider((current) => createReferenceAutocompleteProvider(current, () => session));
@@ -145,19 +155,27 @@ export default function repositoryReferences(pi: ExtensionAPI): void {
 
   pi.on("before_agent_start", async (event, ctx) => {
     const currentSession = session;
-    if (currentSession === undefined) return;
+    if (currentSession === undefined) {
+      return;
+    }
     const mentionedAliases = findMentionedAliases(event.prompt, currentSession.references);
     const failures = await waitForRequestedReferences(currentSession, mentionedAliases, ctx.signal);
-    if (currentSession.closed) return;
+    if (currentSession.closed) {
+      return;
+    }
     const catalogue = renderReferenceCatalogue({
       session: currentSession,
       mentionedAliases,
       materializationFailures: failures,
     });
-    if (catalogue === undefined) return;
+    if (catalogue === undefined) {
+      return;
+    }
 
     for (const root of catalogueExposedRoots(currentSession, mentionedAliases)) {
-      if (exposedRoots.has(root)) continue;
+      if (exposedRoots.has(root)) {
+        continue;
+      }
       exposedRoots.add(root);
       currentSession.protectedRoots.add(root);
       pi.appendEntry(EXPOSED_ROOT_ENTRY, { version: 1, root });
@@ -173,7 +191,9 @@ export default function repositoryReferences(pi: ExtensionAPI): void {
         currentSession === undefined
           ? await isProtectedPhysicalPath(event.input.path, ctx.cwd, exposedRoots, fileSystem)
           : await shouldBlockSessionWrite(currentSession, event.input.path, ctx.cwd, fileSystem);
-      if (blocked.status === "error") return { block: true, reason: blocked.error.message };
+      if (blocked.status === "error") {
+        return { block: true, reason: blocked.error.message };
+      }
       if (blocked.value) {
         return {
           block: true,
@@ -183,20 +203,32 @@ export default function repositoryReferences(pi: ExtensionAPI): void {
       return;
     }
 
-    if (currentSession === undefined) return;
+    if (currentSession === undefined) {
+      return;
+    }
 
     if (isToolCallEventType("read", event)) {
       const rewritten = await resolveSessionReadPath(currentSession, event.input.path, fileSystem);
-      if (rewritten.status === "error") return { block: true, reason: rewritten.error.message };
-      if (rewritten.value._tag === "resolved") event.input.path = rewritten.value.path;
+      if (rewritten.status === "error") {
+        return { block: true, reason: rewritten.error.message };
+      }
+      if (rewritten.value._tag === "resolved") {
+        event.input.path = rewritten.value.path;
+      }
       return;
     }
 
     if (isToolCallEventType("grep", event) || isToolCallEventType("find", event) || isToolCallEventType("ls", event)) {
-      if (event.input.path === undefined) return;
+      if (event.input.path === undefined) {
+        return;
+      }
       const rewritten = await resolveSessionReadPath(currentSession, event.input.path, fileSystem);
-      if (rewritten.status === "error") return { block: true, reason: rewritten.error.message };
-      if (rewritten.value._tag === "resolved") event.input.path = rewritten.value.path;
+      if (rewritten.status === "error") {
+        return { block: true, reason: rewritten.error.message };
+      }
+      if (rewritten.value._tag === "resolved") {
+        event.input.path = rewritten.value.path;
+      }
     }
   });
 
@@ -206,8 +238,12 @@ export default function repositoryReferences(pi: ExtensionAPI): void {
     const currentSession = session;
     session = undefined;
     refreshOptions = undefined;
-    if (currentSession === undefined) return;
-    if (event.reason === "reload") await finishRepositoryReferencesSessionWork(currentSession);
+    if (currentSession === undefined) {
+      return;
+    }
+    if (event.reason === "reload") {
+      await finishRepositoryReferencesSessionWork(currentSession);
+    }
     closeRepositoryReferencesSession(currentSession);
   });
 }
@@ -219,6 +255,8 @@ function makeRuntimeToken(sessionId: string): string {
 
 /** Parse Pi's conventional offline environment flag without treating `0` as active. */
 function isPiOffline(value: string | undefined): boolean {
-  if (value === undefined) return false;
+  if (value === undefined) {
+    return false;
+  }
   return value === "1" || value.toLowerCase() === "true" || value.toLowerCase() === "yes";
 }

@@ -164,7 +164,9 @@ export async function startRepositoryReferencesSession(
   options: StartRepositoryReferencesOptions
 ): Promise<ResultType<RepositoryReferencesSession, ConfigurationLoadError>> {
   const configuration = await loadRepositoryReferencesConfiguration(options);
-  if (configuration.status === "error") return configuration;
+  if (configuration.status === "error") {
+    return configuration;
+  }
 
   const session: RepositoryReferencesSession = {
     references: new Map(),
@@ -209,7 +211,9 @@ export function findMentionedAliases(
   const aliases = new Set<string>();
   for (const match of prompt.matchAll(/@(?:"([^"/]+)(?:\/[^"\n]*)?"|([a-z0-9][a-z0-9._-]*))/gu)) {
     const alias = match[1] ?? match[2];
-    if (alias !== undefined && references.has(alias)) aliases.add(alias);
+    if (alias !== undefined && references.has(alias)) {
+      aliases.add(alias);
+    }
   }
   return aliases;
 }
@@ -227,9 +231,13 @@ export async function waitForRequestedReferences(
   const failures = new Map<string, string>();
   for (const alias of aliases) {
     const runtime = session.references.get(alias);
-    if (runtime === undefined || runtimeRoot(runtime) !== undefined) continue;
+    if (runtime === undefined || runtimeRoot(runtime) !== undefined) {
+      continue;
+    }
     const work = session.activeAliasSettlements.get(alias) ?? remoteWorkForRuntime(session, runtime);
-    if (work !== undefined) await waitWithoutCancelling(work, signal);
+    if (work !== undefined) {
+      await waitWithoutCancelling(work, signal);
+    }
     const settled = session.references.get(alias);
     if (settled !== undefined && runtimeRoot(settled) === undefined) {
       failures.set(alias, runtimeFailureReason(settled));
@@ -305,7 +313,9 @@ export async function refreshRepositoryReference(
     "explicit"
   );
   const settlement = session.activeAliasSettlements.get(alias);
-  if (settlement !== undefined) await settlement;
+  if (settlement !== undefined) {
+    await settlement;
+  }
   const settled = session.references.get(alias);
   if (settled?._tag === "failed-cached-remote" || settled?._tag === "failed-uncached-remote") {
     return Result.err(settled.error);
@@ -332,11 +342,17 @@ export async function resolveSessionReadPath(
   >
 > {
   const parsed = parseAliasPath(input);
-  if (parsed.status === "error") return parsed;
-  if (parsed.value._tag === "not-alias-path") return Result.ok({ _tag: "unchanged" });
+  if (parsed.status === "error") {
+    return parsed;
+  }
+  if (parsed.value._tag === "not-alias-path") {
+    return Result.ok({ _tag: "unchanged" });
+  }
 
   const reference = session.references.get(parsed.value.alias);
-  if (reference === undefined) return Result.ok({ _tag: "unchanged" });
+  if (reference === undefined) {
+    return Result.ok({ _tag: "unchanged" });
+  }
   const root = runtimeRoot(reference);
   if (root === undefined) {
     const reason = runtimeFailureReason(reference);
@@ -372,7 +388,9 @@ export async function shouldBlockSessionWrite(
   >
 > {
   const parsed = parseAliasPath(input);
-  if (parsed.status === "error") return parsed;
+  if (parsed.status === "error") {
+    return parsed;
+  }
   if (parsed.value._tag === "alias-path" && session.references.has(parsed.value.alias)) {
     return Result.ok(true);
   }
@@ -381,15 +399,23 @@ export async function shouldBlockSessionWrite(
 
 /** Return the currently usable canonical root for a runtime state. */
 export function runtimeRoot(runtime: ReferenceRuntime): string | undefined {
-  if (runtime._tag === "ready-local") return runtime.local.root;
-  if ("remote" in runtime) return runtime.remote.checkout.root;
+  if (runtime._tag === "ready-local") {
+    return runtime.local.root;
+  }
+  if ("remote" in runtime) {
+    return runtime.remote.checkout.root;
+  }
   return undefined;
 }
 
 /** Return the current autocomplete index for a ready state. */
 export function runtimeIndex(runtime: ReferenceRuntime): ReferenceIndex | undefined {
-  if (runtime._tag === "ready-local") return runtime.local.index;
-  if ("remote" in runtime) return runtime.remote.index;
+  if (runtime._tag === "ready-local") {
+    return runtime.local.index;
+  }
+  if ("remote" in runtime) {
+    return runtime.remote.index;
+  }
   return undefined;
 }
 
@@ -535,7 +561,9 @@ function scheduleRemoteWork(
   mode: "automatic" | "explicit"
 ): void {
   const storage = options.managedCheckouts;
-  if (storage === undefined) return;
+  if (storage === undefined) {
+    return;
+  }
   const cacheKey = makeCacheKey(reference.repository, reference.configuredRef);
 
   let work = session.activeRemoteWork.get(cacheKey);
@@ -594,7 +622,9 @@ async function settleRemoteAlias(
   onReferenceWork: ((event: ReferenceWorkEvent) => void) | undefined
 ): Promise<void> {
   const published = await work;
-  if (session.closed || session.references.get(alias)?.configuration !== reference) return;
+  if (session.closed || session.references.get(alias)?.configuration !== reference) {
+    return;
+  }
   if (published.status === "error") {
     session.references.set(
       alias,
@@ -619,7 +649,9 @@ async function settleRemoteAlias(
 
   session.protectedRoots.add(published.value.root);
   const indexed = await indexManagedCheckout(alias, published.value, git);
-  if (session.closed || session.references.get(alias)?.configuration !== reference) return;
+  if (session.closed || session.references.get(alias)?.configuration !== reference) {
+    return;
+  }
   if (indexed.status === "error") {
     const fallback = { checkout: published.value, index: buildReferenceIndex("") };
     session.references.set(alias, {
@@ -685,8 +717,12 @@ function remoteWorkForRuntime(
   session: RepositoryReferencesSession,
   runtime: ReferenceRuntime
 ): ActiveRemoteWork | undefined {
-  if (runtime._tag === "cloning-remote" || runtime._tag === "refreshing-remote") return runtime.work;
-  if (runtime.configuration._tag !== "remote") return undefined;
+  if (runtime._tag === "cloning-remote" || runtime._tag === "refreshing-remote") {
+    return runtime.work;
+  }
+  if (runtime.configuration._tag !== "remote") {
+    return undefined;
+  }
   const cacheKey = makeCacheKey(runtime.configuration.repository, runtime.configuration.configuredRef);
   return session.activeRemoteWork.get(cacheKey);
 }
@@ -697,7 +733,9 @@ async function waitWithoutCancelling(work: Promise<unknown>, signal: AbortSignal
     await work;
     return;
   }
-  if (signal.aborted) return;
+  if (signal.aborted) {
+    return;
+  }
   await Promise.race([
     work,
     new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true })),
@@ -706,11 +744,21 @@ async function waitWithoutCancelling(work: Promise<unknown>, signal: AbortSignal
 
 /** Render one concise availability reason from an explicit runtime state. */
 function runtimeFailureReason(runtime: ReferenceRuntime): string {
-  if (runtime._tag === "invalid-local") return runtime.error.message;
-  if (runtime._tag === "remote-uncached") return runtime.reason;
-  if (runtime._tag === "offline-uncached-remote") return runtime.error.message;
-  if (runtime._tag === "failed-uncached-remote") return runtime.error.message;
-  if (runtime._tag === "cloning-remote") return "initial materialization is still running";
+  if (runtime._tag === "invalid-local") {
+    return runtime.error.message;
+  }
+  if (runtime._tag === "remote-uncached") {
+    return runtime.reason;
+  }
+  if (runtime._tag === "offline-uncached-remote") {
+    return runtime.error.message;
+  }
+  if (runtime._tag === "failed-uncached-remote") {
+    return runtime.error.message;
+  }
+  if (runtime._tag === "cloning-remote") {
+    return "initial materialization is still running";
+  }
   return "Repository Reference is unavailable";
 }
 

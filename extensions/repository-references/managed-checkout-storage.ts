@@ -113,7 +113,9 @@ export async function openManagedCheckout(
   request: ManagedCheckoutRequest
 ): Promise<ResultType<ReadyManagedCheckout | undefined, ManagedCheckoutOpenError>> {
   const inspected = await inspectManagedCheckout(options, request);
-  if (inspected.status === "error") return inspected;
+  if (inspected.status === "error") {
+    return inspected;
+  }
   return Result.ok(inspected.value._tag === "ready" ? inspected.value.checkout : undefined);
 }
 
@@ -124,8 +126,12 @@ async function inspectManagedCheckout(
 ): Promise<ResultType<ManagedCheckoutInspection, ManagedCheckoutOpenError>> {
   const paths = makeEntryPaths(options.cacheRoot, request);
   const metadata = await readCacheMetadata(paths.metadata, options.fileSystem);
-  if (metadata.status === "error") return metadata;
-  if (metadata.value === undefined) return Result.ok({ _tag: "uncached" });
+  if (metadata.status === "error") {
+    return metadata;
+  }
+  if (metadata.value === undefined) {
+    return Result.ok({ _tag: "uncached" });
+  }
 
   const expectedRef = request.configuredRef ?? DEFAULT_BRANCH_CACHE_REF;
   if (
@@ -151,7 +157,9 @@ async function inspectManagedCheckout(
     return isMissingCause(root.error.cause) ? Result.ok({ _tag: "missing-checkout", metadata: metadata.value }) : root;
   }
   const canonicalEntry = await options.fileSystem.realPath(paths.entry);
-  if (canonicalEntry.status === "error") return canonicalEntry;
+  if (canonicalEntry.status === "error") {
+    return canonicalEntry;
+  }
   if (!isContained(canonicalEntry.value, root.value)) {
     return invalidMetadata(paths.metadata, "selected checkout escapes its cache entry");
   }
@@ -177,13 +185,19 @@ export async function publishManagedCheckout(
 ): Promise<ResultType<ReadyManagedCheckout, ManagedCheckoutStorageError>> {
   const paths = makeEntryPaths(options.cacheRoot, request);
   const observed = await inspectManagedCheckout(options, request);
-  if (observed.status === "error") return observed;
+  if (observed.status === "error") {
+    return observed;
+  }
 
   const prepared = await options.fileSystem.makeDirectory(paths.entry);
-  if (prepared.status === "error") return publicationFailure(paths.cacheKey, prepared.error);
+  if (prepared.status === "error") {
+    return publicationFailure(paths.cacheKey, prepared.error);
+  }
 
   const acquired = await options.locks.acquire(paths.cacheKey);
-  if (acquired.status === "error") return acquired;
+  if (acquired.status === "error") {
+    return acquired;
+  }
 
   const operation = await publishWhileLocked(
     options,
@@ -194,7 +208,9 @@ export async function publishManagedCheckout(
     context.automaticAttemptAt
   );
   const released = await acquired.value.release();
-  if (operation.status === "error") return operation;
+  if (operation.status === "error") {
+    return operation;
+  }
   return released.status === "error" ? released : operation;
 }
 
@@ -208,8 +224,12 @@ async function publishWhileLocked(
   automaticAttemptAt: Date | undefined
 ): Promise<ResultType<ReadyManagedCheckout, ManagedCheckoutStorageError>> {
   const current = await inspectManagedCheckout(options, request);
-  if (current.status === "error") return current;
-  if (current.value._tag === "ready" && intent === "ensure") return Result.ok(current.value.checkout);
+  if (current.status === "error") {
+    return current;
+  }
+  if (current.value._tag === "ready" && intent === "ensure") {
+    return Result.ok(current.value.checkout);
+  }
   if (
     current.value._tag === "ready" &&
     intent === "refresh" &&
@@ -231,7 +251,9 @@ async function publishWhileLocked(
       `attempt-${randomUUID()}`,
       options.fileSystem
     );
-    if (attemptWritten.status === "error") return attemptWritten;
+    if (attemptWritten.status === "error") {
+      return attemptWritten;
+    }
     selected = { ...selected, metadata: attemptedMetadata };
     currentMetadata = attemptedMetadata;
   }
@@ -240,7 +262,9 @@ async function publishWhileLocked(
   const checkoutParent = join(paths.entry, "checkouts");
   for (const directory of [stagingParent, checkoutParent]) {
     const created = await options.fileSystem.makeDirectory(directory);
-    if (created.status === "error") return publicationFailure(paths.cacheKey, created.error);
+    if (created.status === "error") {
+      return publicationFailure(paths.cacheKey, created.error);
+    }
   }
 
   const suffix = options.makeUniqueSuffix?.() ?? randomUUID();
@@ -294,7 +318,9 @@ async function publishWhileLocked(
   }
 
   const root = await options.fileSystem.realPath(checkoutPath);
-  if (root.status === "error") return publicationFailure(paths.cacheKey, root.error);
+  if (root.status === "error") {
+    return publicationFailure(paths.cacheKey, root.error);
+  }
 
   const now = options.clock.now().toISOString();
   const metadata = makePublishedMetadata(
@@ -306,13 +332,17 @@ async function publishWhileLocked(
     automaticAttemptAt
   );
   const metadataWritten = await writeCacheMetadata(paths.metadata, metadata, suffix, options.fileSystem);
-  if (metadataWritten.status === "error") return metadataWritten;
+  if (metadataWritten.status === "error") {
+    return metadataWritten;
+  }
   return Result.ok({ cacheKey: paths.cacheKey, root: root.value, metadata });
 }
 
 /** Return validated metadata from either ready or repairable published state. */
 function inspectionMetadata(inspection: ManagedCheckoutInspection): CacheMetadata | undefined {
-  if (inspection._tag === "uncached") return undefined;
+  if (inspection._tag === "uncached") {
+    return undefined;
+  }
   return inspection._tag === "ready" ? inspection.checkout.metadata : inspection.metadata;
 }
 
@@ -348,7 +378,9 @@ function makePublishedMetadata(
   if (pin === undefined) {
     return automaticAttempt === undefined ? required : { ...required, lastAutomaticAttempt: automaticAttempt };
   }
-  if (automaticAttempt === undefined) return { ...required, pinnedCommit: pin };
+  if (automaticAttempt === undefined) {
+    return { ...required, pinnedCommit: pin };
+  }
   return { ...required, pinnedCommit: pin, lastAutomaticAttempt: automaticAttempt };
 }
 

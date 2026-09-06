@@ -50,7 +50,9 @@ describe("Remote Reference runtime orchestration", () => {
       clock: { now: () => new Date("2026-01-01T12:00:00.000Z") },
       onAutomaticAttempt: (cacheKey) => attempts.push(cacheKey),
     });
-    if (started.status === "error") throw started.error;
+    if (started.status === "error") {
+      throw started.error;
+    }
 
     expect(started.value.references.get("one")?._tag).toBe("cloning-remote");
     expect(started.value.references.get("two")?._tag).toBe("cloning-remote");
@@ -78,11 +80,15 @@ describe("Remote Reference runtime orchestration", () => {
       managedCheckouts: store,
       clock: { now: () => new Date("2026-01-01T12:00:00.000Z") },
     });
-    if (started.status === "error") throw started.error;
+    if (started.status === "error") {
+      throw started.error;
+    }
 
     const refreshing = started.value.references.get("source");
     expect(refreshing?._tag).toBe("refreshing-remote");
-    if (refreshing !== undefined) expect(runtimeRoot(refreshing)).toBe(fixture.checkout.root);
+    if (refreshing !== undefined) {
+      expect(runtimeRoot(refreshing)).toBe(fixture.checkout.root);
+    }
 
     pending.resolve(
       Result.err(
@@ -100,7 +106,9 @@ describe("Remote Reference runtime orchestration", () => {
 
     const failed = started.value.references.get("source");
     expect(failed?._tag).toBe("failed-cached-remote");
-    if (failed !== undefined) expect(runtimeRoot(failed)).toBe(fixture.checkout.root);
+    if (failed !== undefined) {
+      expect(runtimeRoot(failed)).toBe(fixture.checkout.root);
+    }
   });
 
   test("never starts network work offline and distinguishes cached from uncached state", async () => {
@@ -117,7 +125,9 @@ describe("Remote Reference runtime orchestration", () => {
         },
       },
     });
-    if (uncached.status === "error") throw uncached.error;
+    if (uncached.status === "error") {
+      throw uncached.error;
+    }
 
     const cachedFixture = await createRemoteConfiguration(["cached"], { refresh: { policy: "session" } });
     const cached = await startRepositoryReferencesSession({
@@ -131,7 +141,9 @@ describe("Remote Reference runtime orchestration", () => {
         },
       },
     });
-    if (cached.status === "error") throw cached.error;
+    if (cached.status === "error") {
+      throw cached.error;
+    }
 
     expect(uncached.value.references.get("uncached")?._tag).toBe("offline-uncached-remote");
     expect(cached.value.references.get("cached")?._tag).toBe("offline-cached-remote");
@@ -154,7 +166,9 @@ describe("Remote Reference runtime orchestration", () => {
       managedCheckouts: store,
       sessionAutomaticAttempts: new Set([cacheKey]),
     });
-    if (sessionSuppressed.status === "error") throw sessionSuppressed.error;
+    if (sessionSuppressed.status === "error") {
+      throw sessionSuppressed.error;
+    }
 
     const ttlFixture = await createRemoteConfiguration(["ttl"], {
       refresh: { policy: "ttl", ttl: "1m" },
@@ -168,7 +182,9 @@ describe("Remote Reference runtime orchestration", () => {
       clock: { now: () => new Date("2026-01-01T12:00:00.000Z") },
       recentAutomaticAttempts: new Map([[ttlFixture.cacheKey, new Date("2026-01-01T11:50:00.000Z")]]),
     });
-    if (cooldownSuppressed.status === "error") throw cooldownSuppressed.error;
+    if (cooldownSuppressed.status === "error") {
+      throw cooldownSuppressed.error;
+    }
 
     expect(sessionSuppressed.value.references.get("session")?._tag).toBe("ready-remote");
     expect(cooldownSuppressed.value.references.get("ttl")?._tag).toBe("stale-remote");
@@ -188,7 +204,9 @@ describe("Remote Reference runtime orchestration", () => {
         },
       },
     });
-    if (started.status === "error") throw started.error;
+    if (started.status === "error") {
+      throw started.error;
+    }
     await waitForRequestedReferences(started.value, new Set(["manual"]), undefined);
 
     expect(publications).toBe(1);
@@ -213,7 +231,9 @@ describe("Remote Reference runtime orchestration", () => {
       recentAutomaticAttempts: new Map([[fixture.cacheKey, new Date("2026-01-01T11:59:00.000Z")]]),
       clock: { now: () => new Date("2026-01-01T12:00:00.000Z") },
     });
-    if (started.status === "error") throw started.error;
+    if (started.status === "error") {
+      throw started.error;
+    }
 
     expect(started.value.references.get("manual")?._tag).toBe("ready-remote");
     expect(publications).toBe(0);
@@ -244,7 +264,9 @@ describe("Remote Reference runtime orchestration", () => {
       ...fixture.options,
       managedCheckouts: store,
     });
-    if (started.status === "error") throw started.error;
+    if (started.status === "error") {
+      throw started.error;
+    }
 
     const refreshed = await refreshRepositoryReference(started.value, "source", {
       ...fixture.options,
@@ -281,7 +303,9 @@ describe("Remote Reference runtime orchestration", () => {
         },
       },
     });
-    if (started.status === "error") throw started.error;
+    if (started.status === "error") {
+      throw started.error;
+    }
 
     const refreshed = await refreshRepositoryReference(started.value, "source", {
       ...fixture.options,
@@ -297,7 +321,9 @@ describe("Remote Reference runtime orchestration", () => {
     });
 
     expect(refreshed.status).toBe("error");
-    if (refreshed.status === "error") expect(refreshed.error._tag).toBe("OfflineMaterializationError");
+    if (refreshed.status === "error") {
+      expect(refreshed.error._tag).toBe("OfflineMaterializationError");
+    }
     expect(publications).toBe(0);
     expect(started.value.references.get("source")?._tag).toBe("offline-cached-remote");
   });
@@ -305,7 +331,9 @@ describe("Remote Reference runtime orchestration", () => {
   test("detects configured mentions and closes obsolete session state", async () => {
     const fixture = await createRemoteConfiguration(["source", "other"]);
     const started = await startRepositoryReferencesSession(fixture.options);
-    if (started.status === "error") throw started.error;
+    if (started.status === "error") {
+      throw started.error;
+    }
 
     expect(
       findMentionedAliases('Use @source and @"other/path with spaces.ts", not @unknown', started.value.references)
@@ -375,7 +403,9 @@ async function createRemoteConfiguration(aliases: ReadonlyArray<string>, extra: 
     git,
   };
   const repository = parseRepositorySource("owner/repo");
-  if (repository.status === "error") throw repository.error;
+  if (repository.status === "error") {
+    throw repository.error;
+  }
   const cacheKey = makeCacheKey(repository.value, undefined);
   return { options, checkout, cacheKey };
 }
@@ -388,7 +418,9 @@ function makeDeferred<T>() {
   return {
     promise,
     resolve(value: T) {
-      if (resolver === undefined) throw new Error("Deferred resolver was not initialized");
+      if (resolver === undefined) {
+        throw new Error("Deferred resolver was not initialized");
+      }
       resolver(value);
     },
   };

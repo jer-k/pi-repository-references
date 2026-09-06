@@ -104,7 +104,9 @@ describe("Alias path parsing and containment", () => {
       const result = parseAliasPath(input);
 
       expect(result.status).toBe("error");
-      if (result.status === "error") expect(result.error._tag).toBe("InvalidReferencePathError");
+      if (result.status === "error") {
+        expect(result.error._tag).toBe("InvalidReferencePathError");
+      }
     }
   );
 
@@ -150,7 +152,9 @@ describe("Alias path parsing and containment", () => {
       if (parsed.status === "ok" && parsed.value._tag === "alias-path") {
         const result = await resolveAliasPath(parsed.value, root, createNodeRepositoryFileSystem());
         expect(result.status).toBe("error");
-        if (result.status === "error") expect(result.error._tag).toBe("ReferencePathEscapeError");
+        if (result.status === "error") {
+          expect(result.error._tag).toBe("ReferencePathEscapeError");
+        }
       }
     }
   });
@@ -164,7 +168,9 @@ describe("Alias path parsing and containment", () => {
     await symlink(root, alias);
     const fileSystem = createNodeRepositoryFileSystem();
     const canonicalRoot = await fileSystem.realPath(root);
-    if (canonicalRoot.status === "error") throw canonicalRoot.error;
+    if (canonicalRoot.status === "error") {
+      throw canonicalRoot.error;
+    }
     const roots = new Set([canonicalRoot.value]);
     const target = join(root, "new.ts");
 
@@ -191,7 +197,9 @@ describe("Alias path parsing and containment", () => {
     temporaryDirectories.push(root);
     const fileSystem = createNodeRepositoryFileSystem();
     const canonicalRoot = await fileSystem.realPath(root);
-    if (canonicalRoot.status === "error") throw canonicalRoot.error;
+    if (canonicalRoot.status === "error") {
+      throw canonicalRoot.error;
+    }
     const homeRelativeTarget = `~/${relative(homedir(), join(root, "new.ts"))}`;
 
     expect(
@@ -232,7 +240,9 @@ describe("Alias path parsing and containment", () => {
 
 async function open(path: string) {
   const alias = parseAlias("source");
-  if (alias.status === "error") throw alias.error;
+  if (alias.status === "error") {
+    throw alias.error;
+  }
   return openLocalReference({
     alias: alias.value,
     configuredPath: path,

@@ -25,18 +25,25 @@ export function referenceStatuses(session: RepositoryReferencesSession): Readonl
 /** Render all configured reference diagnostics for `/references`. */
 export function renderReferenceStatuses(session: RepositoryReferencesSession): string {
   const statuses = referenceStatuses(session);
-  if (statuses.length === 0) return "No Repository References are configured.";
+  if (statuses.length === 0) {
+    return "No Repository References are configured.";
+  }
   return statuses.map(renderReferenceStatus).join("\n\n");
 }
 
 /** Render compact footer text for active clone and refresh work. */
 export function renderActiveReferenceWork(activeWork: ReadonlyMap<string, "clone" | "refresh">): string | undefined {
-  if (activeWork.size === 0) return undefined;
+  if (activeWork.size === 0) {
+    return undefined;
+  }
   let clones = 0;
   let refreshes = 0;
   for (const operation of activeWork.values()) {
-    if (operation === "clone") clones += 1;
-    else refreshes += 1;
+    if (operation === "clone") {
+      clones += 1;
+    } else {
+      refreshes += 1;
+    }
   }
   const details = [
     clones === 0 ? undefined : `${String(clones)} cloning`,
@@ -82,7 +89,9 @@ function renderReferenceStatus(status: ReferenceStatus): string {
 
 /** Render one effective Refresh Policy. */
 function renderRefreshPolicy(policy: RefreshPolicy): string {
-  if (policy._tag === "ttl") return `ttl (${policy.ttl.literal})`;
+  if (policy._tag === "ttl") {
+    return `ttl (${policy.ttl.literal})`;
+  }
   return policy._tag;
 }
 

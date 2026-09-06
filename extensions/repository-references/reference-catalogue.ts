@@ -19,10 +19,14 @@ export function renderReferenceCatalogue(input: ReferenceCatalogueInput): string
   for (const [alias, runtime] of input.session.references) {
     const mentioned = input.mentionedAliases.has(alias);
     const available = runtimeRoot(runtime) !== undefined;
-    if (!mentioned && (runtime.configuration.description === undefined || !available)) continue;
+    if (!mentioned && (runtime.configuration.description === undefined || !available)) {
+      continue;
+    }
     lines.push(renderReference(alias, runtime, input.materializationFailures.get(alias)));
   }
-  if (lines.length === 0) return undefined;
+  if (lines.length === 0) {
+    return undefined;
+  }
 
   return [
     "Repository References (read-only):",

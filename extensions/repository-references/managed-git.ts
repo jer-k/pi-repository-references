@@ -100,8 +100,12 @@ export function createManagedGit(
         ],
         networkTimeoutMilliseconds
       );
-      if (partial.status === "ok") return Result.ok(undefined);
-      if (!isUnsupportedFilter(partial.error)) return partial;
+      if (partial.status === "ok") {
+        return Result.ok(undefined);
+      }
+      if (!isUnsupportedFilter(partial.error)) {
+        return partial;
+      }
 
       const removed = await fileSystem.remove(stagingPath, "recursive");
       if (removed.status === "error") {
@@ -129,7 +133,9 @@ export function createManagedGit(
         arguments: ["clone", "--no-checkout", "--no-hardlinks", oldCheckout, stagingPath],
         timeoutMilliseconds: GIT_NETWORK_TIMEOUT_MILLISECONDS,
       });
-      if (copied.status === "error") return copied;
+      if (copied.status === "error") {
+        return copied;
+      }
       if (copied.value.timedOut) {
         return Result.err(
           new GitTimeoutError({
@@ -184,7 +190,9 @@ export function createManagedGit(
       resolveRevision(process, repository, stagingPath, configuredRef, pinned, remoteNamespace),
     checkoutDetached: async (repository, stagingPath, commit) => {
       const checkedOut = await runLocal(process, repository, stagingPath, ["checkout", "--detach", "--force", commit]);
-      if (checkedOut.status === "error") return checkedOut;
+      if (checkedOut.status === "error") {
+        return checkedOut;
+      }
       const removedRemote = await runLocal(process, repository, stagingPath, ["remote", "remove", "origin"]);
       if (removedRemote.status === "error" && !removedRemote.error.message.includes("No such remote")) {
         return removedRemote;
@@ -222,13 +230,19 @@ async function resolveRevision(
     `refs/remotes/${remoteNamespace}/${configuredRef}^{commit}`,
     "probe"
   );
-  if (branch.status === "ok") return Result.ok({ commit: branch.value, kind: "branch" });
+  if (branch.status === "ok") {
+    return Result.ok({ commit: branch.value, kind: "branch" });
+  }
 
   const tag = await revParse(process, repository, stagingPath, `refs/tags/${configuredRef}^{commit}`, "probe");
-  if (tag.status === "ok") return Result.ok({ commit: tag.value, kind: "tag", pinnedCommit: tag.value });
+  if (tag.status === "ok") {
+    return Result.ok({ commit: tag.value, kind: "tag", pinnedCommit: tag.value });
+  }
 
   const commit = await revParse(process, repository, stagingPath, `${configuredRef}^{commit}`, "probe");
-  if (commit.status === "ok") return Result.ok({ commit: commit.value, kind: "commit", pinnedCommit: commit.value });
+  if (commit.status === "ok") {
+    return Result.ok({ commit: commit.value, kind: "commit", pinnedCommit: commit.value });
+  }
 
   return Result.err(
     new GitRefResolutionError({
@@ -253,9 +267,13 @@ async function revParse(
     arguments: ["-C", stagingPath, "rev-parse", "--verify", expression],
     timeoutMilliseconds: GIT_NETWORK_TIMEOUT_MILLISECONDS,
   });
-  if (output.status === "error") return output;
+  if (output.status === "error") {
+    return output;
+  }
   const commit = output.value.standardOutput.trim().toLowerCase();
-  if (output.value.exitCode === 0 && /^[0-9a-f]{40,64}$/u.test(commit)) return Result.ok(commit);
+  if (output.value.exitCode === 0 && /^[0-9a-f]{40,64}$/u.test(commit)) {
+    return Result.ok(commit);
+  }
   return Result.err(
     new GitRefResolutionError({
       repositoryIdentity: repository.identity,
@@ -281,8 +299,12 @@ async function runLocal(
     arguments: ["-C", stagingPath, ...arguments_],
     timeoutMilliseconds: GIT_NETWORK_TIMEOUT_MILLISECONDS,
   });
-  if (output.status === "error") return output;
-  if (output.value.exitCode === 0) return Result.ok(undefined);
+  if (output.status === "error") {
+    return output;
+  }
+  if (output.value.exitCode === 0) {
+    return Result.ok(undefined);
+  }
   return Result.err(
     new GitRefResolutionError({
       repositoryIdentity: repository.identity,
@@ -306,7 +328,9 @@ async function runNetwork(
     arguments: arguments_,
     timeoutMilliseconds,
   });
-  if (output.status === "error") return output;
+  if (output.status === "error") {
+    return output;
+  }
   if (output.value.timedOut) {
     return Result.err(
       new GitTimeoutError({
@@ -329,7 +353,9 @@ async function runNetwork(
       })
     );
   }
-  if (output.value.exitCode === 0) return Result.ok(undefined);
+  if (output.value.exitCode === 0) {
+    return Result.ok(undefined);
+  }
 
   const diagnostic = sanitizeDiagnostic(output.value.standardError, repository.cloneSource);
   if (isAuthenticationDiagnostic(output.value.standardError)) {
@@ -357,7 +383,9 @@ async function runNetwork(
 
 /** Identify the narrow diagnostics that justify retrying without partial-clone filtering. */
 function isUnsupportedFilter(error: ManagedGitError): boolean {
-  if (error._tag !== "GitCloneError") return false;
+  if (error._tag !== "GitCloneError") {
+    return false;
+  }
   return /(?:filtering .*not recognized|does not support.*filter|unknown option.*filter|invalid filter-spec)/iu.test(
     error.diagnostic
   );

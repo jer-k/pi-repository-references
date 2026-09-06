@@ -105,7 +105,9 @@ function createAutocompleteSession(
     "/config/repository-references.json",
     "/home"
   );
-  if (parsed.status === "error") throw parsed.error;
+  if (parsed.status === "error") {
+    throw parsed.error;
+  }
   const source = parsed.value.references.get("source");
   const other = parsed.value.references.get("other");
   const unavailable = parsed.value.references.get("unavailable");
