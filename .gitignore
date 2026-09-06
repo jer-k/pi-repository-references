@@ -4,3 +4,4 @@ coverage/
 
 .agents/
 skills-lock.json
+.pi/
