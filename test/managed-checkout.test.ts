@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -144,6 +144,46 @@ describe("Managed Checkout publication", () => {
       expect(left.value.root).toBe(right.value.root);
     }
   });
+
+  test("repairs a missing selected checkout while preserving an immutable ref pin", async () => {
+    const fixture = await createRemoteFixture();
+    const storage = createStorage(fixture.workspace);
+    const initialMain = await revision(fixture.work, "main");
+    const request = { repository: fixture.repository, configuredRef: "v1" };
+    const initial = await publishManagedCheckout(storage, request, "ensure");
+    if (initial.status === "error") throw initial.error;
+
+    await writeFile(join(fixture.work, "main.txt"), "main two\n");
+    await git(fixture.work, "add", ".");
+    await git(fixture.work, "commit", "-m", "main two");
+    await git(fixture.work, "tag", "-f", "v1");
+    await git(fixture.work, "push", "origin", "main");
+    await git(fixture.work, "push", "--force", "origin", "refs/tags/v1");
+    await rm(initial.value.root, { recursive: true, force: true });
+
+    const missing = await openManagedCheckout(storage, request);
+    const repaired = await publishManagedCheckout(storage, request, "refresh");
+    const reopened = await openManagedCheckout(storage, request);
+
+    expect(missing).toEqual({ status: "ok", value: undefined });
+    expect(repaired).toMatchObject({
+      status: "ok",
+      value: {
+        metadata: {
+          refKind: "tag",
+          resolvedCommit: initialMain,
+          pinnedCommit: initialMain,
+          publicationSequence: initial.value.metadata.publicationSequence + 1,
+        },
+      },
+    });
+    expect(reopened).toMatchObject({
+      status: "ok",
+      value: { metadata: { resolvedCommit: initialMain, pinnedCommit: initialMain } },
+    });
+    if (repaired.status === "ok")
+      expect(await readFile(join(repaired.value.root, "main.txt"), "utf8")).toBe("main one\n");
+  }, 10_000);
 
   test("recreates a deleted disposable cache root on demand", async () => {
     const fixture = await createRemoteFixture();
@@ -399,6 +439,68 @@ describe("Managed Checkout identity and metadata", () => {
       expect(unavailable.error._tag).toBe("CacheMetadataReadError");
       expect(unavailable.error.cause).toBe(fileSystemError);
     }
+  });
+
+  test("rejects a selected-checkout symlink that escapes its cache entry", async () => {
+    const fixture = await createRemoteFixture();
+    const storage = createStorage(fixture.workspace);
+    const request = { repository: fixture.repository, configuredRef: undefined };
+    const initial = await publishManagedCheckout(storage, request, "ensure");
+    if (initial.status === "error") throw initial.error;
+    const outside = join(fixture.workspace, "outside");
+    await mkdir(outside);
+    await rm(initial.value.root, { recursive: true, force: true });
+    await symlink(outside, initial.value.root);
+
+    const opened = await openManagedCheckout(storage, request);
+    const published = await publishManagedCheckout(storage, request, "ensure");
+
+    expect(opened.status).toBe("error");
+    if (opened.status === "error") {
+      expect(opened.error._tag).toBe("CacheMetadataParseError");
+      if (opened.error._tag === "CacheMetadataParseError") {
+        expect(opened.error.reason).toBe("selected checkout escapes its cache entry");
+      }
+    }
+    expect(published.status).toBe("error");
+    if (published.status === "error") expect(published.error._tag).toBe("CacheMetadataParseError");
+  });
+
+  test("does not treat selected-checkout permission failures as repairable absence", async () => {
+    const fixture = await createRemoteFixture();
+    const storage = createStorage(fixture.workspace);
+    const request = { repository: fixture.repository, configuredRef: undefined };
+    const initial = await publishManagedCheckout(storage, request, "ensure");
+    if (initial.status === "error") throw initial.error;
+    const selectedPath = join(
+      storage.cacheRoot,
+      "entries",
+      initial.value.cacheKey,
+      initial.value.metadata.currentCheckout
+    );
+    const cause = new Error("permission denied");
+    const fileSystemError = new RepositoryFileSystemError({
+      operation: "stat",
+      path: selectedPath,
+      cause,
+      message: "checkout stat denied",
+    });
+    const deniedFileSystem: RepositoryFileSystem = {
+      ...storage.fileSystem,
+      entryKind: async (path, symbolicLinks) =>
+        path === selectedPath ? Result.err(fileSystemError) : storage.fileSystem.entryKind(path, symbolicLinks),
+    };
+
+    const opened = await openManagedCheckout({ cacheRoot: storage.cacheRoot, fileSystem: deniedFileSystem }, request);
+    const published = await publishManagedCheckout({ ...storage, fileSystem: deniedFileSystem }, request, "ensure");
+
+    expect(opened.status).toBe("error");
+    if (opened.status === "error") {
+      expect(opened.error).toBe(fileSystemError);
+      expect(opened.error.cause).toBe(cause);
+    }
+    expect(published.status).toBe("error");
+    if (published.status === "error") expect(published.error).toBe(fileSystemError);
   });
 });
 

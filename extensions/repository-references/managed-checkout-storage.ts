@@ -34,6 +34,7 @@ export type ManagedCheckoutStorageError =
   | CacheMetadataReadError
   | CacheMetadataWriteError
   | CachePublicationError
+  | RepositoryFileSystemError
   | ManagedGitError;
 
 /** Dependencies and cache location for Managed Checkout storage. */
@@ -71,7 +72,12 @@ export type ManagedCheckoutStore = {
   /** Open a complete published checkout or report an uncached entry. */
   readonly open: (
     request: ManagedCheckoutRequest
-  ) => Promise<ResultType<ReadyManagedCheckout | undefined, CacheMetadataReadError | CacheMetadataParseError>>;
+  ) => Promise<
+    ResultType<
+      ReadyManagedCheckout | undefined,
+      CacheMetadataReadError | CacheMetadataParseError | RepositoryFileSystemError
+    >
+  >;
   /** Ensure or refresh an immutable checkout publication. */
   readonly publish: (
     request: ManagedCheckoutRequest,
@@ -88,20 +94,38 @@ export function createManagedCheckoutStore(options: ManagedCheckoutStorageOption
   };
 }
 
+type ManagedCheckoutInspection =
+  | { readonly _tag: "uncached" }
+  | { readonly _tag: "missing-checkout"; readonly metadata: CacheMetadata }
+  | { readonly _tag: "ready"; readonly checkout: ReadyManagedCheckout };
+
+type ManagedCheckoutOpenError = CacheMetadataReadError | CacheMetadataParseError | RepositoryFileSystemError;
+
 /**
  * Open the currently published checkout without acquiring a mutation lock.
  *
- * Readers see only the checkout selected by atomically published metadata. Missing metadata means
- * the entry is uncached; malformed metadata or a missing selected checkout is a structured error.
+ * Readers see only the checkout selected by atomically published metadata. Missing metadata or
+ * disposable checkout data is reported as uncached so orchestration can schedule materialization.
+ * Malformed metadata and filesystem failures remain structured errors.
  */
 export async function openManagedCheckout(
   options: Pick<ManagedCheckoutStorageOptions, "cacheRoot" | "fileSystem">,
   request: ManagedCheckoutRequest
-): Promise<ResultType<ReadyManagedCheckout | undefined, CacheMetadataReadError | CacheMetadataParseError>> {
+): Promise<ResultType<ReadyManagedCheckout | undefined, ManagedCheckoutOpenError>> {
+  const inspected = await inspectManagedCheckout(options, request);
+  if (inspected.status === "error") return inspected;
+  return Result.ok(inspected.value._tag === "ready" ? inspected.value.checkout : undefined);
+}
+
+/** Inspect published state while retaining valid metadata needed to repair missing checkout data. */
+async function inspectManagedCheckout(
+  options: Pick<ManagedCheckoutStorageOptions, "cacheRoot" | "fileSystem">,
+  request: ManagedCheckoutRequest
+): Promise<ResultType<ManagedCheckoutInspection, ManagedCheckoutOpenError>> {
   const paths = makeEntryPaths(options.cacheRoot, request);
   const metadata = await readCacheMetadata(paths.metadata, options.fileSystem);
   if (metadata.status === "error") return metadata;
-  if (metadata.value === undefined) return Result.ok(undefined);
+  if (metadata.value === undefined) return Result.ok({ _tag: "uncached" });
 
   const expectedRef = request.configuredRef ?? DEFAULT_BRANCH_CACHE_REF;
   if (
@@ -117,16 +141,24 @@ export async function openManagedCheckout(
   }
   const kind = await options.fileSystem.entryKind(checkoutPath, "follow");
   if (kind.status === "error") {
-    return invalidMetadata(paths.metadata, "selected checkout is missing", kind.error);
+    return isMissingCause(kind.error.cause) ? Result.ok({ _tag: "missing-checkout", metadata: metadata.value }) : kind;
   }
   if (kind.value !== "directory") {
     return invalidMetadata(paths.metadata, "selected checkout is not a directory");
   }
   const root = await options.fileSystem.realPath(checkoutPath);
   if (root.status === "error") {
-    return invalidMetadata(paths.metadata, "selected checkout cannot be canonicalized", root.error);
+    return isMissingCause(root.error.cause) ? Result.ok({ _tag: "missing-checkout", metadata: metadata.value }) : root;
   }
-  return Result.ok({ cacheKey: paths.cacheKey, root: root.value, metadata: metadata.value });
+  const canonicalEntry = await options.fileSystem.realPath(paths.entry);
+  if (canonicalEntry.status === "error") return canonicalEntry;
+  if (!isContained(canonicalEntry.value, root.value)) {
+    return invalidMetadata(paths.metadata, "selected checkout escapes its cache entry");
+  }
+  return Result.ok({
+    _tag: "ready",
+    checkout: { cacheKey: paths.cacheKey, root: root.value, metadata: metadata.value },
+  });
 }
 
 /**
@@ -144,7 +176,7 @@ export async function publishManagedCheckout(
   context: ManagedCheckoutPublicationContext = {}
 ): Promise<ResultType<ReadyManagedCheckout, ManagedCheckoutStorageError>> {
   const paths = makeEntryPaths(options.cacheRoot, request);
-  const observed = await openManagedCheckout(options, request);
+  const observed = await inspectManagedCheckout(options, request);
   if (observed.status === "error") return observed;
 
   const prepared = await options.fileSystem.makeDirectory(paths.entry);
@@ -158,7 +190,7 @@ export async function publishManagedCheckout(
     request,
     paths,
     intent,
-    observed.value?.metadata.publicationSequence,
+    inspectionMetadata(observed.value)?.publicationSequence,
     context.automaticAttemptAt
   );
   const released = await acquired.value.release();
@@ -175,18 +207,19 @@ async function publishWhileLocked(
   observedPublicationSequence: number | undefined,
   automaticAttemptAt: Date | undefined
 ): Promise<ResultType<ReadyManagedCheckout, ManagedCheckoutStorageError>> {
-  const current = await openManagedCheckout(options, request);
+  const current = await inspectManagedCheckout(options, request);
   if (current.status === "error") return current;
-  if (current.value !== undefined && intent === "ensure") return Result.ok(current.value);
+  if (current.value._tag === "ready" && intent === "ensure") return Result.ok(current.value.checkout);
   if (
-    current.value !== undefined &&
+    current.value._tag === "ready" &&
     intent === "refresh" &&
-    current.value.metadata.publicationSequence !== observedPublicationSequence
+    current.value.checkout.metadata.publicationSequence !== observedPublicationSequence
   ) {
-    return Result.ok(current.value);
+    return Result.ok(current.value.checkout);
   }
 
-  let selected = current.value;
+  let selected = current.value._tag === "ready" ? current.value.checkout : undefined;
+  let currentMetadata = inspectionMetadata(current.value);
   if (selected !== undefined && automaticAttemptAt !== undefined) {
     const attemptedMetadata = {
       ...selected.metadata,
@@ -200,6 +233,7 @@ async function publishWhileLocked(
     );
     if (attemptWritten.status === "error") return attemptWritten;
     selected = { ...selected, metadata: attemptedMetadata };
+    currentMetadata = attemptedMetadata;
   }
 
   const stagingParent = join(paths.entry, "staging");
@@ -220,7 +254,7 @@ async function publishWhileLocked(
     return staged;
   }
 
-  const pinned = selected === undefined ? undefined : makeExistingPin(selected.metadata);
+  const pinned = currentMetadata === undefined ? undefined : makeExistingPin(currentMetadata);
   const revision = await options.git.resolveRevision(
     request.repository,
     stagingPath,
@@ -267,13 +301,19 @@ async function publishWhileLocked(
     request,
     revision.value,
     checkoutRelativePath,
-    selected?.metadata,
+    currentMetadata,
     now,
     automaticAttemptAt
   );
   const metadataWritten = await writeCacheMetadata(paths.metadata, metadata, suffix, options.fileSystem);
   if (metadataWritten.status === "error") return metadataWritten;
   return Result.ok({ cacheKey: paths.cacheKey, root: root.value, metadata });
+}
+
+/** Return validated metadata from either ready or repairable published state. */
+function inspectionMetadata(inspection: ManagedCheckoutInspection): CacheMetadata | undefined {
+  if (inspection._tag === "uncached") return undefined;
+  return inspection._tag === "ready" ? inspection.checkout.metadata : inspection.metadata;
 }
 
 /** Project old metadata into the optional pin input expected by ref resolution. */

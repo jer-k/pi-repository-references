@@ -103,7 +103,7 @@ Local paths may be absolute, home-relative, or relative to the containing config
 
 Remote sources accept GitHub shorthand, unambiguous host shorthand, HTTP/HTTPS/SSH/Git URLs, and SCP-style SSH addresses. Authentication uses the user's existing Git credential helpers, SSH agent, keys, and SSH configuration without terminal prompts. An omitted `ref` follows the remote default branch; branches move on refresh, while tags and commits remain pinned.
 
-Managed Checkouts are detached, disposable, and stored under `$PI_CODING_AGENT_DIR/repository-references/`. Complete commit-addressed checkouts are atomically published, shared across projects, and recreated after manual cache deletion. Existing cached source remains usable during refresh and after failures. Clone and fetch operations time out after 60 seconds. To reclaim space, exit Pi and delete that cache directory; there is no automatic pruning in the first release.
+Managed Checkouts are detached, disposable, and stored under `$PI_CODING_AGENT_DIR/repository-references/`. Complete commit-addressed checkouts are atomically published, shared across projects, and recreated after complete or partial manual cache deletion. Repair retains tag and commit pins rather than moving them. Existing cached source remains usable during refresh and after failures. Offline sessions never attempt repair over the network and report a missing checkout as unavailable. Clone and fetch operations time out after 60 seconds. To reclaim space, exit Pi and delete that cache directory; there is no automatic pruning in the first release.
 
 Refresh policies are:
 

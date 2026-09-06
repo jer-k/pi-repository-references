@@ -86,21 +86,21 @@ describe("Managed Checkout process and network integration", () => {
     expect([...observedRoots].every((root) => root.includes("/checkouts/"))).toBe(true);
   });
 
-  test("coalesces initial publication through an inter-process lock", async () => {
+  test("coalesces initial publication and missing-checkout repair through an inter-process lock", async () => {
     const fixture = await createGitFixture();
     const cacheRoot = join(fixture.workspace, "concurrent-cache");
     const arguments_ = ["--import", "tsx", subprocessFixture, cacheRoot, fixture.bare];
 
-    const [left, right] = await Promise.all([
-      executeFile(process.execPath, arguments_, { cwd: repositoryRoot }),
-      executeFile(process.execPath, arguments_, { cwd: repositoryRoot }),
-    ]);
-    const leftResult = parseSubprocessResult(left.stdout);
-    const rightResult = parseSubprocessResult(right.stdout);
+    const [left, right] = await publishConcurrently(arguments_);
+    expect(left).toEqual(right);
+    expect(left.sequence).toBe(1);
+    expect(await readFile(join(left.root, "main.txt"), "utf8")).toBe("one\n");
 
-    expect(leftResult).toEqual(rightResult);
-    expect(leftResult.sequence).toBe(1);
-    expect(await readFile(join(leftResult.root, "main.txt"), "utf8")).toBe("one\n");
+    await rm(left.root, { recursive: true, force: true });
+    const [repairedLeft, repairedRight] = await publishConcurrently(arguments_);
+    expect(repairedLeft).toEqual(repairedRight);
+    expect(repairedLeft.sequence).toBe(2);
+    expect(await readFile(join(repairedLeft.root, "main.txt"), "utf8")).toBe("one\n");
   });
 
   test("classifies a hanging loopback clone timeout without replacing a usable checkout", async () => {
@@ -126,6 +126,16 @@ describe("Managed Checkout process and network integration", () => {
     expect(reopened).toMatchObject({ status: "ok", value: { root: initial.value.root } });
   });
 });
+
+async function publishConcurrently(
+  arguments_: ReadonlyArray<string>
+): Promise<readonly [SubprocessResult, SubprocessResult]> {
+  const [left, right] = await Promise.all([
+    executeFile(process.execPath, arguments_, { cwd: repositoryRoot }),
+    executeFile(process.execPath, arguments_, { cwd: repositoryRoot }),
+  ]);
+  return [parseSubprocessResult(left.stdout), parseSubprocessResult(right.stdout)];
+}
 
 function createStore(cacheRoot: string, networkTimeoutMilliseconds?: number): ManagedCheckoutStore {
   const fileSystem = createNodeRepositoryFileSystem();
