@@ -1,5 +1,5 @@
 import { execFile as execFileCallback } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -10,7 +10,10 @@ import {
   createWriteTool,
   DefaultResourceLoader,
   SettingsManager,
+  type BeforeAgentStartEvent,
+  type BeforeAgentStartEventResult,
   type EditToolInput,
+  type ExtensionAPI,
   type ExtensionContext,
   type SessionShutdownEvent,
   type SessionStartEvent,
@@ -21,11 +24,16 @@ import {
 import type { AutocompleteProvider } from "@earendil-works/pi-tui";
 import { expect, test } from "vitest";
 
+import repositoryReferencesExtension from "../../extensions/repository-references.ts";
 import { testCast } from "../test-cast.ts";
 
 const executeFile = promisify(execFileCallback);
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const extensionPath = join(repositoryRoot, "extensions", "repository-references.ts");
+type BeforeAgentStartHandler = (
+  event: BeforeAgentStartEvent,
+  context: ExtensionContext
+) => Promise<BeforeAgentStartEventResult | undefined> | BeforeAgentStartEventResult | undefined;
 type SessionStartHandler = (event: SessionStartEvent, context: ExtensionContext) => Promise<void> | void;
 type SessionShutdownHandler = (event: SessionShutdownEvent, context: ExtensionContext) => Promise<void> | void;
 type ToolCallHandler = (
@@ -129,6 +137,97 @@ test("blocks Pi edit and write tools through every normalized physical reference
   }
 });
 
+test("retains exposed-root protection when reloaded configuration is unavailable", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pi-repository-references-invalid-reload-"));
+  const agentDir = join(workspace, "agent");
+  const project = join(workspace, "project");
+  const local = join(workspace, "local");
+  const configurationPath = join(agentDir, "repository-references.json");
+  await mkdir(agentDir);
+  await mkdir(project);
+  await mkdir(local);
+  await git(local, "init", "-b", "main");
+  await git(local, "config", "user.email", "test@example.com");
+  await git(local, "config", "user.name", "Test");
+  const protectedFile = join(local, "protected.txt");
+  await writeFile(protectedFile, "original\n");
+  await git(local, "add", ".");
+  await git(local, "commit", "-m", "initial");
+
+  const previousAgentDirectory = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+  const corruptions: ReadonlyArray<{
+    readonly name: string;
+    readonly apply: () => Promise<void>;
+  }> = [
+    { name: "malformed JSON", apply: () => writeFile(configurationPath, "{broken json") },
+    {
+      name: "invalid schema",
+      apply: () => writeFile(configurationPath, JSON.stringify({ version: 1, references: [] })),
+    },
+    {
+      name: "read failure",
+      apply: async () => {
+        await rm(configurationPath, { force: true });
+        await mkdir(configurationPath);
+      },
+    },
+  ];
+
+  try {
+    for (const corruption of corruptions) {
+      await rm(configurationPath, { recursive: true, force: true });
+      await writeConfiguration(agentDir, local, ["local"]);
+      const entries: Array<DirectCustomEntry> = [];
+      const initial = loadDirectExtension(entries);
+      const initialContext = directLifecycleContext(project, entries, []);
+      await sessionStart(requiredHandler(initial, "session_start"), initialContext, "startup");
+      const beforeAgentStart = requiredHandler(initial, "before_agent_start");
+      const beforeEvent = { type: "before_agent_start" as const, prompt: "consult references", systemPrompt: "base" };
+      const catalogue = await beforeAgentStart(
+        testCast<typeof beforeEvent, BeforeAgentStartEvent>(beforeEvent),
+        initialContext
+      );
+      expect(catalogue?.systemPrompt).toContain("@local");
+      expect(entries).toContainEqual({
+        type: "custom",
+        customType: "repository-references-exposed-root",
+        data: { version: 1, root: await realpath(local) },
+      });
+      await sessionShutdown(requiredHandler(initial, "session_shutdown"), initialContext, "reload");
+
+      await corruption.apply();
+      const notifications: Array<string> = [];
+      const reloaded = loadDirectExtension(entries);
+      const reloadedContext = directLifecycleContext(project, entries, notifications);
+      await sessionStart(requiredHandler(reloaded, "session_start"), reloadedContext, "reload");
+      expect(notifications.at(-1), corruption.name).toMatch(/configuration|repository-reference/i);
+      const reloadedBeforeAgent = requiredHandler(reloaded, "before_agent_start");
+      expect(
+        await reloadedBeforeAgent(testCast<typeof beforeEvent, BeforeAgentStartEvent>(beforeEvent), reloadedContext)
+      ).toBeUndefined();
+
+      const toolCall = requiredHandler(reloaded, "tool_call");
+      await expectGuardedToolBlocked(toolCall, reloadedContext, project, "write", {
+        path: pathToFileURL(protectedFile).href,
+        content: "mutated\n",
+      });
+      const projectFile = join(project, `${corruption.name.replace(" ", "-")}.txt`);
+      await expectGuardedToolAllowed(toolCall, reloadedContext, project, "write", {
+        path: projectFile,
+        content: "project\n",
+      });
+      expect(await readFile(protectedFile, "utf8")).toBe("original\n");
+      expect(await readFile(projectFile, "utf8")).toBe("project\n");
+      await sessionShutdown(requiredHandler(reloaded, "session_shutdown"), reloadedContext, "reload");
+    }
+  } finally {
+    if (previousAgentDirectory === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previousAgentDirectory;
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
 test("runs Local Reference commands and reconstructs autocomplete through Pi reload", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "pi-repository-references-lifecycle-integration-"));
   const agentDir = join(workspace, "agent");
@@ -211,6 +310,70 @@ test("runs Local Reference commands and reconstructs autocomplete through Pi rel
     await rm(workspace, { recursive: true, force: true });
   }
 });
+
+type DirectCustomEntry = {
+  readonly type: "custom";
+  readonly customType: string;
+  readonly data: Readonly<Record<string, string | number>>;
+};
+
+type DirectExtensionHandlers = {
+  readonly session_start: SessionStartHandler;
+  readonly before_agent_start: BeforeAgentStartHandler;
+  readonly tool_call: ToolCallHandler;
+  readonly session_shutdown: SessionShutdownHandler;
+};
+
+function loadDirectExtension(
+  entries: Array<DirectCustomEntry>
+): Map<keyof DirectExtensionHandlers, Array<DirectExtensionHandlers[keyof DirectExtensionHandlers]>> {
+  const handlers = new Map<
+    keyof DirectExtensionHandlers,
+    Array<DirectExtensionHandlers[keyof DirectExtensionHandlers]>
+  >();
+  const pi = {
+    on(event: keyof DirectExtensionHandlers, handler: DirectExtensionHandlers[keyof DirectExtensionHandlers]) {
+      const registered = handlers.get(event) ?? [];
+      registered.push(handler);
+      handlers.set(event, registered);
+    },
+    registerCommand() {},
+    appendEntry(customType: string, data: Readonly<Record<string, string | number>>) {
+      entries.push({ type: "custom", customType, data });
+    },
+  };
+  repositoryReferencesExtension(testCast<typeof pi, ExtensionAPI>(pi));
+  return handlers;
+}
+
+function requiredHandler<Name extends keyof DirectExtensionHandlers>(
+  handlers: Map<keyof DirectExtensionHandlers, Array<DirectExtensionHandlers[keyof DirectExtensionHandlers]>>,
+  name: Name
+): DirectExtensionHandlers[Name] {
+  const handler = handlers.get(name)?.[0];
+  if (handler === undefined) throw new Error(`Expected ${name} handler`);
+  return testCast<typeof handler, DirectExtensionHandlers[Name]>(handler);
+}
+
+function directLifecycleContext(
+  cwd: string,
+  entries: ReadonlyArray<DirectCustomEntry>,
+  notifications: Array<string>
+): ExtensionContext {
+  const context = {
+    cwd,
+    mode: "rpc" as const,
+    hasUI: true as const,
+    signal: undefined,
+    sessionManager: { getSessionId: () => "reload-session", getBranch: () => entries },
+    isProjectTrusted: () => true,
+    ui: {
+      notify: (message: string) => notifications.push(message),
+      setStatus: () => undefined,
+    },
+  };
+  return testCast<typeof context, ExtensionContext>(context);
+}
 
 async function expectGuardedToolBlocked(
   handler: ToolCallHandler,

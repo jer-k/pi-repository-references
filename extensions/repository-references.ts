@@ -17,6 +17,7 @@ import {
   renderReferenceCatalogue,
 } from "./repository-references/reference-catalogue.ts";
 import { registerReferenceCommands } from "./repository-references/reference-commands.ts";
+import { isProtectedPhysicalPath } from "./repository-references/reference-path.ts";
 import { createReferenceWorkUx } from "./repository-references/reference-work-ux.ts";
 import {
   closeRepositoryReferencesSession,
@@ -166,10 +167,12 @@ export default function repositoryReferences(pi: ExtensionAPI): void {
 
   pi.on("tool_call", async (event, ctx) => {
     const currentSession = session;
-    if (currentSession === undefined) return;
 
     if (isToolCallEventType("edit", event) || isToolCallEventType("write", event)) {
-      const blocked = await shouldBlockSessionWrite(currentSession, event.input.path, ctx.cwd, fileSystem);
+      const blocked =
+        currentSession === undefined
+          ? await isProtectedPhysicalPath(event.input.path, ctx.cwd, exposedRoots, fileSystem)
+          : await shouldBlockSessionWrite(currentSession, event.input.path, ctx.cwd, fileSystem);
       if (blocked.status === "error") return { block: true, reason: blocked.error.message };
       if (blocked.value) {
         return {
@@ -179,6 +182,8 @@ export default function repositoryReferences(pi: ExtensionAPI): void {
       }
       return;
     }
+
+    if (currentSession === undefined) return;
 
     if (isToolCallEventType("read", event)) {
       const rewritten = await resolveSessionReadPath(currentSession, event.input.path, fileSystem);

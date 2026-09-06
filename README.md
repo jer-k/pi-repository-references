@@ -59,7 +59,7 @@ Repository References reads two optional files:
 - Global: `$PI_CODING_AGENT_DIR/repository-references.json` (or Pi's resolved agent directory)
 - Project: `<cwd>/.pi/repository-references.json`, only when Pi trusts the project
 
-The project file replaces same-named global entries as complete entries. Its file-wide refresh policy also replaces the global file-wide policy. Any read, JSON, version, or schema error in either loaded file disables the complete configured set. Missing files are valid empty inputs.
+The project file replaces same-named global entries as complete entries. Its file-wide refresh policy also replaces the global file-wide policy. Any read, JSON, version, or schema error in either loaded file disables the complete configured set. Physical roots already exposed in the current session remain write-protected while configuration is unavailable, but Alias resolution is disabled with the configured set. Missing files are valid empty inputs.
 
 Configuration uses the strict version 1 schema:
 
