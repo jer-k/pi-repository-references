@@ -1,16 +1,22 @@
 import { execFile as execFileCallback } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 import {
+  createEditTool,
+  createWriteTool,
   DefaultResourceLoader,
   SettingsManager,
+  type EditToolInput,
   type ExtensionContext,
   type SessionShutdownEvent,
   type SessionStartEvent,
+  type ToolCallEvent,
+  type ToolCallEventResult,
+  type WriteToolInput,
 } from "@earendil-works/pi-coding-agent";
 import type { AutocompleteProvider } from "@earendil-works/pi-tui";
 import { expect, test } from "vitest";
@@ -22,6 +28,10 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..")
 const extensionPath = join(repositoryRoot, "extensions", "repository-references.ts");
 type SessionStartHandler = (event: SessionStartEvent, context: ExtensionContext) => Promise<void> | void;
 type SessionShutdownHandler = (event: SessionShutdownEvent, context: ExtensionContext) => Promise<void> | void;
+type ToolCallHandler = (
+  event: ToolCallEvent,
+  context: ExtensionContext
+) => Promise<ToolCallEventResult | undefined> | ToolCallEventResult | undefined;
 
 test("loads the checkout through Pi's package runtime", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "pi-repository-references-package-integration-"));
@@ -39,6 +49,82 @@ test("loads the checkout through Pi's package runtime", async () => {
     expect(extensions.extensions.map((extension) => extension.resolvedPath)).toContain(extensionPath);
     expect([...(extensions.extensions[0]?.commands.keys() ?? [])]).toEqual(["references", "references-refresh"]);
   } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test("blocks Pi edit and write tools through every normalized physical reference path", async () => {
+  const workspace = await mkdtemp(join(homedir(), ".pi-repository-references-write-guard-"));
+  const agentDir = join(workspace, "agent");
+  const project = join(workspace, "project");
+  const local = join(workspace, "protected root");
+  const symlinkRoot = join(workspace, "protected-link");
+  await mkdir(agentDir);
+  await mkdir(project);
+  await mkdir(local);
+  await git(local, "init", "-b", "main");
+  await git(local, "config", "user.email", "test@example.com");
+  await git(local, "config", "user.name", "Test");
+  const protectedFile = join(local, "protected.txt");
+  await writeFile(protectedFile, "original\n");
+  await git(local, "add", ".");
+  await git(local, "commit", "-m", "initial");
+  await symlink(local, symlinkRoot);
+  await writeConfiguration(agentDir, local, ["local"]);
+
+  const previousAgentDirectory = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+  const settingsManager = SettingsManager.inMemory({ packages: [repositoryRoot] });
+  settingsManager.setProjectTrusted(true);
+  const resourceLoader = new DefaultResourceLoader({ cwd: project, agentDir, settingsManager });
+  const context = lifecycleContext(project, [], []);
+
+  try {
+    await resourceLoader.reload();
+    const loaded = resourceLoader.getExtensions().extensions[0];
+    if (loaded === undefined) throw new Error("Expected loaded extension");
+    const startupHandler = loaded.handlers.get("session_start")?.[0];
+    await sessionStart(
+      testCast<typeof startupHandler, SessionStartHandler | undefined>(startupHandler),
+      context,
+      "startup"
+    );
+    const loadedToolCallHandler = loaded.handlers.get("tool_call")?.[0];
+    const handler = testCast<typeof loadedToolCallHandler, ToolCallHandler | undefined>(loadedToolCallHandler);
+    if (handler === undefined) throw new Error("Expected tool_call handler");
+
+    const pathSpellings = [
+      protectedFile,
+      `~/${relative(homedir(), protectedFile)}`,
+      pathToFileURL(protectedFile).href,
+      `@${protectedFile}`,
+      join(symlinkRoot, "protected.txt"),
+      protectedFile.replace("protected root", "protected\u202Froot"),
+      join(local, "missing", "new.txt"),
+    ];
+    for (const path of pathSpellings) {
+      await expectGuardedToolBlocked(handler, context, project, "write", { path, content: "mutated\n" });
+      await expectGuardedToolBlocked(handler, context, project, "edit", {
+        path,
+        edits: [{ oldText: "original", newText: "mutated" }],
+      });
+    }
+
+    const projectFile = join(project, "project.txt");
+    await expectGuardedToolAllowed(handler, context, project, "write", {
+      path: projectFile,
+      content: "project\n",
+    });
+    await expectGuardedToolAllowed(handler, context, project, "write", {
+      path: "@ordinary.txt",
+      content: "ordinary\n",
+    });
+    expect(await readFile(protectedFile, "utf8")).toBe("original\n");
+    expect(await readFile(projectFile, "utf8")).toBe("project\n");
+    expect(await readFile(join(project, "ordinary.txt"), "utf8")).toBe("ordinary\n");
+  } finally {
+    if (previousAgentDirectory === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previousAgentDirectory;
     await rm(workspace, { recursive: true, force: true });
   }
 });
@@ -125,6 +211,38 @@ test("runs Local Reference commands and reconstructs autocomplete through Pi rel
     await rm(workspace, { recursive: true, force: true });
   }
 });
+
+async function expectGuardedToolBlocked(
+  handler: ToolCallHandler,
+  context: ExtensionContext,
+  cwd: string,
+  toolName: "edit" | "write",
+  input: EditToolInput | WriteToolInput
+): Promise<void> {
+  const event = { type: "tool_call" as const, toolName, toolCallId: `${toolName}-blocked`, input };
+  const result = await handler(testCast<typeof event, ToolCallEvent>(event), context);
+  if (result?.block !== true) {
+    if (toolName === "write") {
+      await createWriteTool(cwd).execute("write-bypassed", testCast<typeof input, WriteToolInput>(input));
+    } else {
+      await createEditTool(cwd).execute("edit-bypassed", testCast<typeof input, EditToolInput>(input));
+    }
+  }
+  expect(result).toMatchObject({ block: true });
+}
+
+async function expectGuardedToolAllowed(
+  handler: ToolCallHandler,
+  context: ExtensionContext,
+  cwd: string,
+  toolName: "write",
+  input: WriteToolInput
+): Promise<void> {
+  const event = { type: "tool_call" as const, toolName, toolCallId: "write-allowed", input };
+  const result = await handler(testCast<typeof event, ToolCallEvent>(event), context);
+  expect(result).toBeUndefined();
+  await createWriteTool(cwd).execute("write-allowed", input);
+}
 
 function lifecycleContext(
   cwd: string,

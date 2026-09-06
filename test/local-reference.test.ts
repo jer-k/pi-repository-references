@@ -1,11 +1,14 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { join, relative } from "node:path";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
+import { Result } from "better-result";
 import { afterEach, describe, expect, test } from "vitest";
 
+import { RepositoryFileSystemError } from "../extensions/repository-reference-errors.ts";
 import { parseAlias } from "../extensions/repository-references/alias.ts";
 import { createNodeGitProcess } from "../extensions/repository-references/git-process.ts";
 import { openLocalReference } from "../extensions/repository-references/local-reference.ts";
@@ -152,9 +155,9 @@ describe("Alias path parsing and containment", () => {
     }
   });
 
-  test("recognizes lexical roots and symlink aliases into protected physical roots", async () => {
+  test("normalizes physical paths like Pi and recognizes symlink aliases into protected roots", async () => {
     const workspace = await makeTemporaryDirectory();
-    const root = join(workspace, "root");
+    const root = join(workspace, "root with space");
     await mkdir(root);
     await writeFile(join(root, "file.ts"), "source");
     const alias = join(workspace, "root-link");
@@ -163,10 +166,67 @@ describe("Alias path parsing and containment", () => {
     const canonicalRoot = await fileSystem.realPath(root);
     if (canonicalRoot.status === "error") throw canonicalRoot.error;
     const roots = new Set([canonicalRoot.value]);
+    const target = join(root, "new.ts");
 
-    expect(await isProtectedPhysicalPath(join(root, "new.ts"), workspace, roots, fileSystem)).toBe(true);
-    expect(await isProtectedPhysicalPath(join(alias, "file.ts"), workspace, roots, fileSystem)).toBe(true);
-    expect(await isProtectedPhysicalPath(join(workspace, "project.ts"), workspace, roots, fileSystem)).toBe(false);
+    for (const input of [
+      target,
+      `@${target}`,
+      pathToFileURL(target).href,
+      target.replace("root with space", "root\u202Fwith\u202Fspace"),
+      join(alias, "file.ts"),
+    ]) {
+      expect(await isProtectedPhysicalPath(input, workspace, roots, fileSystem)).toEqual({
+        status: "ok",
+        value: true,
+      });
+    }
+    expect(await isProtectedPhysicalPath(join(workspace, "project.ts"), workspace, roots, fileSystem)).toEqual({
+      status: "ok",
+      value: false,
+    });
+  });
+
+  test("normalizes home-relative paths into protected roots", async () => {
+    const root = await mkdtemp(join(homedir(), ".pi-reference-path-test-"));
+    temporaryDirectories.push(root);
+    const fileSystem = createNodeRepositoryFileSystem();
+    const canonicalRoot = await fileSystem.realPath(root);
+    if (canonicalRoot.status === "error") throw canonicalRoot.error;
+    const homeRelativeTarget = `~/${relative(homedir(), join(root, "new.ts"))}`;
+
+    expect(
+      await isProtectedPhysicalPath(homeRelativeTarget, tmpdir(), new Set([canonicalRoot.value]), fileSystem)
+    ).toEqual({ status: "ok", value: true });
+  });
+
+  test("returns path-normalization and filesystem failures so write guards fail closed", async () => {
+    const malformedUrl = await isProtectedPhysicalPath(
+      "file:///%",
+      tmpdir(),
+      new Set(),
+      createNodeRepositoryFileSystem()
+    );
+    const cause = new Error("permission denied");
+    const fileSystemError = new RepositoryFileSystemError({
+      operation: "realpath",
+      path: "/unavailable",
+      cause,
+      message: "realpath unavailable",
+    });
+    const unavailable = await isProtectedPhysicalPath("unavailable", tmpdir(), new Set(), {
+      realPath: async () => Result.err(fileSystemError),
+    });
+
+    expect(malformedUrl.status).toBe("error");
+    if (malformedUrl.status === "error") {
+      expect(malformedUrl.error._tag).toBe("PhysicalPathResolutionError");
+      expect(malformedUrl.error.cause).toBeInstanceOf(Error);
+    }
+    expect(unavailable.status).toBe("error");
+    if (unavailable.status === "error") {
+      expect(unavailable.error).toBe(fileSystemError);
+      expect(unavailable.error.cause).toBe(cause);
+    }
   });
 });
 

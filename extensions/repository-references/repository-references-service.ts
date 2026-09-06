@@ -363,13 +363,20 @@ export async function shouldBlockSessionWrite(
   input: string,
   cwd: string,
   fileSystem: Pick<RepositoryFileSystem, "realPath">
-): Promise<ResultType<boolean, import("../repository-reference-errors.ts").InvalidReferencePathError>> {
+): Promise<
+  ResultType<
+    boolean,
+    | import("../repository-reference-errors.ts").InvalidReferencePathError
+    | import("../repository-reference-errors.ts").PhysicalPathResolutionError
+    | import("../repository-reference-errors.ts").RepositoryFileSystemError
+  >
+> {
   const parsed = parseAliasPath(input);
   if (parsed.status === "error") return parsed;
   if (parsed.value._tag === "alias-path" && session.references.has(parsed.value.alias)) {
     return Result.ok(true);
   }
-  return Result.ok(await isProtectedPhysicalPath(input, cwd, session.protectedRoots, fileSystem));
+  return isProtectedPhysicalPath(input, cwd, session.protectedRoots, fileSystem);
 }
 
 /** Return the currently usable canonical root for a runtime state. */

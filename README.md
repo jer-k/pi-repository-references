@@ -121,7 +121,7 @@ A Description makes an available reference proactively visible in the agent's pe
 
 In TUI mode, `@` autocomplete prepends fuzzy Alias suggestions to Pi's normal project-file results. Typing an exact `@alias/` searches only that reference's current indexed files and derived directories. Local indexes include untracked non-ignored files; remote indexes include tracked files. Completed paths containing spaces are quoted automatically, and unavailable references have root suggestions but no child results.
 
-Repository References are read-only workflow resources. Built-in `edit` and `write` calls are blocked through Alias paths and every current or previously exposed physical reference root. This is not a filesystem sandbox: arbitrary Bash commands can still mutate writable referenced paths, and the extension does not inspect shell command strings.
+Repository References are read-only workflow resources. Built-in `edit` and `write` calls are blocked through Alias paths and every current or previously exposed physical reference root, including Pi-normalized `~`, `file://`, leading-`@`, Unicode-space, symlink, and missing-descendant spellings. This is not a filesystem sandbox: arbitrary Bash commands can still mutate writable referenced paths, and the extension does not inspect shell command strings.
 
 ### Commands and status
 

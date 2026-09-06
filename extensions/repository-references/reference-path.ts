@@ -1,9 +1,12 @@
+import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { Result, type Result as ResultType } from "better-result";
 
 import {
   InvalidReferencePathError,
+  PhysicalPathResolutionError,
   ReferencePathEscapeError,
   ReferencePathResolutionError,
   type RepositoryFileSystemError,
@@ -89,20 +92,60 @@ export async function resolveAliasPath(
 /**
  * Return whether a physical path is beneath any protected canonical reference root.
  *
- * Lexical containment is checked first. Existing paths and nearest existing parents are then
- * canonicalized so alternate symlink paths into a protected root are also recognized.
+ * The raw input is normalized like Pi's built-in file tools before lexical containment is checked.
+ * Existing paths and nearest existing parents are then canonicalized so alternate symlink paths
+ * into a protected root are also recognized. Normalization and filesystem failures are returned so
+ * write guards can fail closed.
  */
 export async function isProtectedPhysicalPath(
   input: string,
   cwd: string,
   canonicalRoots: ReadonlySet<string>,
   fileSystem: Pick<RepositoryFileSystem, "realPath">
-): Promise<boolean> {
-  const absolutePath = isAbsolute(input) ? resolve(input) : resolve(cwd, input);
-  if ([...canonicalRoots].some((root) => isContained(root, absolutePath))) return true;
+): Promise<ResultType<boolean, PhysicalPathResolutionError | RepositoryFileSystemError>> {
+  const normalized = resolvePiToolPath(input, cwd);
+  if (normalized.status === "error") return normalized;
+  if ([...canonicalRoots].some((root) => isContained(root, normalized.value))) return Result.ok(true);
 
-  const canonical = await canonicalizeThroughNearestParent(absolutePath, fileSystem);
-  return canonical.status === "ok" && [...canonicalRoots].some((root) => isContained(root, canonical.value));
+  const canonical = await canonicalizeThroughNearestParent(normalized.value, fileSystem);
+  if (canonical.status === "error") return canonical;
+  return Result.ok([...canonicalRoots].some((root) => isContained(root, canonical.value)));
+}
+
+/** Normalize a file-tool argument according to Pi's documented and built-in path behavior. */
+function resolvePiToolPath(input: string, cwd: string): ResultType<string, PhysicalPathResolutionError> {
+  return Result.try({
+    try: () => {
+      let normalized = input.replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/gu, " ");
+      if (normalized.startsWith("@")) normalized = normalized.slice(1);
+      normalized = normalizeWindowsShellPath(normalized);
+      if (normalized === "~") normalized = homedir();
+      else if (normalized.startsWith("~/") || (process.platform === "win32" && normalized.startsWith("~\\"))) {
+        normalized = join(homedir(), normalized.slice(2));
+      }
+      if (normalized.startsWith("file://")) normalized = fileURLToPath(normalized);
+      return isAbsolute(normalized) ? resolve(normalized) : resolve(cwd, normalized);
+    },
+    catch: (cause) =>
+      new PhysicalPathResolutionError({
+        requestedPath: input,
+        cause,
+        message: `Could not resolve physical tool path ${JSON.stringify(input)}`,
+      }),
+  });
+}
+
+/** Convert Unix-shaped Windows shell drive paths before Node path resolution. */
+function normalizeWindowsShellPath(input: string): string {
+  if (process.platform !== "win32" || !input.startsWith("/") || input.startsWith("//") || input.includes("\\")) {
+    return input;
+  }
+  const match = input.match(/^\/(?:mnt\/|cygdrive\/)?([a-z])(?:\/(.*))?$/iu);
+  if (match === null) return input;
+  const drive = match[1];
+  if (drive === undefined) return input;
+  const suffix = match[2]?.replaceAll("/", "\\");
+  return `${drive.toUpperCase()}:\\${suffix ?? ""}`;
 }
 
 /** Canonicalize an existing target or its nearest existing parent plus missing suffix. */

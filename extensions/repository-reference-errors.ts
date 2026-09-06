@@ -80,6 +80,13 @@ export class ReferenceUnavailableError extends TaggedError("ReferenceUnavailable
   readonly message: string;
 }> {}
 
+/** A physical tool path cannot be normalized to the target Pi will use. */
+export class PhysicalPathResolutionError extends TaggedError("PhysicalPathResolutionError")<{
+  readonly requestedPath: string;
+  readonly cause: unknown;
+  readonly message: string;
+}> {}
+
 /** An Alias descendant resolves outside its repository root. */
 export class ReferencePathEscapeError extends TaggedError("ReferencePathEscapeError")<{
   readonly alias: string;
@@ -241,6 +248,7 @@ export type RepositoryReferenceError =
   | InvalidDurationError
   | InvalidRefreshPolicyError
   | InvalidReferencePathError
+  | PhysicalPathResolutionError
   | ReferenceUnavailableError
   | ReferencePathEscapeError
   | ReferencePathResolutionError
