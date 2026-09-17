@@ -60,7 +60,8 @@ test("notifies automatic failures, suppresses explicit notifications, and stops 
         setStatus: (_key, text) => statuses.push(text),
         notify: (message) => notifications.push(message),
       },
-    })
+    }),
+    "run /references-logs for retained diagnostics"
   );
   const error = new GitCloneError({
     repositoryIdentity: "https://example.invalid/owner/repo",
@@ -77,7 +78,9 @@ test("notifies automatic failures, suppresses explicit notifications, and stops 
   ux.stop();
   ux.onReferenceWork({ _tag: "started", alias: "ignored", operation: "clone", mode: "automatic" });
 
-  expect(notifications).toEqual(["Repository Reference @source failed: Git clone failed"]);
+  expect(notifications).toEqual([
+    "Repository Reference @source failed: Git clone failed; run /references-logs for retained diagnostics",
+  ]);
   expect(statuses.at(-1)).toBeUndefined();
 });
 

@@ -20,6 +20,7 @@ import {
   type LoadConfigurationOptions,
   type RemoteReferenceConfiguration,
   type RepositoryReferenceConfiguration,
+  type RepositoryReferencesConfiguration,
 } from "./reference-configuration.ts";
 import { buildReferenceIndex, type ReferenceIndex } from "./reference-index.ts";
 import { isProtectedPhysicalPath, parseAliasPath, resolveAliasPath } from "./reference-path.ts";
@@ -138,8 +139,8 @@ export type RefreshRepositoryReferenceOptions = {
   readonly onReferenceWork?: (event: ReferenceWorkEvent) => void;
 };
 
-/** Inputs needed to reconcile Local and Remote References for one Pi session start. */
-export type StartRepositoryReferencesOptions = LoadConfigurationOptions & {
+/** Effects and runtime policy needed to reconcile Local and Remote References. */
+export type RepositoryReferencesRuntimeOptions = {
   readonly git: GitProcess;
   readonly fullFileSystem: RepositoryFileSystem;
   readonly clock?: Clock;
@@ -150,6 +151,9 @@ export type StartRepositoryReferencesOptions = LoadConfigurationOptions & {
   readonly onAutomaticAttempt?: (cacheKey: string, attemptedAt: Date) => void;
   readonly onReferenceWork?: (event: ReferenceWorkEvent) => void;
 };
+
+/** Inputs needed to load configuration and reconcile one Pi session. */
+export type StartRepositoryReferencesOptions = LoadConfigurationOptions & RepositoryReferencesRuntimeOptions;
 
 /** Result of attempting to rewrite one read-oriented built-in tool path. */
 export type ReadPathResolution = { readonly _tag: "unchanged" } | { readonly _tag: "resolved"; readonly path: string };
@@ -168,6 +172,19 @@ export async function startRepositoryReferencesSession(
     return configuration;
   }
 
+  return Result.ok(await startRepositoryReferencesSessionFromConfiguration(configuration.value, options));
+}
+
+/**
+ * Reconcile one already parsed configuration into session state and schedule due remote work.
+ *
+ * This composition seam lets the Pi adapter initialize configuration-dependent diagnostics before
+ * any background clone or refresh can fail.
+ */
+export async function startRepositoryReferencesSessionFromConfiguration(
+  configuration: RepositoryReferencesConfiguration,
+  options: RepositoryReferencesRuntimeOptions
+): Promise<RepositoryReferencesSession> {
   const session: RepositoryReferencesSession = {
     references: new Map(),
     protectedRoots: new Set(),
@@ -178,7 +195,7 @@ export async function startRepositoryReferencesSession(
     closed: false,
   };
 
-  for (const [alias, reference] of configuration.value.references) {
+  for (const [alias, reference] of configuration.references) {
     if (reference._tag === "local") {
       await reconcileLocalReference(session, alias, reference, options);
       continue;
@@ -186,7 +203,7 @@ export async function startRepositoryReferencesSession(
     await reconcileRemoteReference(session, alias, reference, options);
   }
 
-  return Result.ok(session);
+  return session;
 }
 
 /** Await publication/index settlement needed before rebuilding this same Pi session on reload. */
@@ -445,7 +462,7 @@ async function reconcileRemoteReference(
   session: RepositoryReferencesSession,
   alias: string,
   reference: RemoteReferenceConfiguration,
-  options: StartRepositoryReferencesOptions
+  options: RepositoryReferencesRuntimeOptions
 ): Promise<void> {
   const storage = options.managedCheckouts;
   if (storage === undefined) {

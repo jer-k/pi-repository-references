@@ -55,7 +55,11 @@ test("loads the checkout through Pi's package runtime", async () => {
 
     expect(extensions.errors).toEqual([]);
     expect(extensions.extensions.map((extension) => extension.resolvedPath)).toContain(extensionPath);
-    expect([...(extensions.extensions[0]?.commands.keys() ?? [])]).toEqual(["references", "references-refresh"]);
+    expect([...(extensions.extensions[0]?.commands.keys() ?? [])]).toEqual([
+      "references",
+      "references-logs",
+      "references-refresh",
+    ]);
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }
@@ -134,6 +138,53 @@ test("blocks Pi edit and write tools through every normalized physical reference
     expect(await readFile(protectedFile, "utf8")).toBe("original\n");
     expect(await readFile(projectFile, "utf8")).toBe("project\n");
     expect(await readFile(join(project, "ordinary.txt"), "utf8")).toBe("ordinary\n");
+  } finally {
+    if (previousAgentDirectory === undefined) {
+      delete process.env.PI_CODING_AGENT_DIR;
+    } else {
+      process.env.PI_CODING_AGENT_DIR = previousAgentDirectory;
+    }
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test("writes failed Git diagnostics and advertises the log command", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pi-repository-references-error-log-"));
+  const agentDir = join(workspace, "agent");
+  const project = join(workspace, "project");
+  await mkdir(agentDir);
+  await mkdir(project);
+  await writeFile(
+    join(agentDir, "repository-references.json"),
+    JSON.stringify({
+      version: 1,
+      errorLog: { enabled: true, ttl: "7d" },
+      references: { broken: { repository: "http://127.0.0.1:1/owner/repository" } },
+    })
+  );
+
+  const previousAgentDirectory = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+  const entries: Array<DirectCustomEntry> = [];
+  const notifications: Array<string> = [];
+  const loaded = loadDirectExtension(entries);
+  const context = directLifecycleContext(project, entries, notifications);
+
+  try {
+    await sessionStart(requiredHandler(loaded, "session_start"), context, "startup");
+    const beforeAgentStart = requiredHandler(loaded, "before_agent_start");
+    const beforeEvent = {
+      type: "before_agent_start" as const,
+      prompt: "Inspect @broken",
+      systemPrompt: "base",
+    };
+    await beforeAgentStart(testCast<typeof beforeEvent, BeforeAgentStartEvent>(beforeEvent), context);
+    await sessionShutdown(requiredHandler(loaded, "session_shutdown"), context, "quit");
+
+    const log = await readFile(join(agentDir, "repository-references", "errors.jsonl"), "utf8");
+    expect(log).toContain('"_tag":"GitCloneError"');
+    expect(log).toContain('"diagnostic"');
+    expect(notifications.some((message) => message.includes("/references-logs"))).toBe(true);
   } finally {
     if (previousAgentDirectory === undefined) {
       delete process.env.PI_CODING_AGENT_DIR;

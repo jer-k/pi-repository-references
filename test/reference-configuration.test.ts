@@ -26,6 +26,7 @@ describe("strict version 1 configuration parsing", () => {
       {
         version: 1,
         refresh: { policy: "ttl", ttl: "12h" },
+        errorLog: { enabled: true, ttl: "3d" },
         references: {
           relative: { path: "../neighbor", description: "Neighbor source" },
           absolute: { path: "/opt/source" },
@@ -59,6 +60,10 @@ describe("strict version 1 configuration parsing", () => {
         configuredRef: "v1",
         configuredRefresh: { _tag: "manual" },
       });
+      expect(result.value.errorLog).toMatchObject({
+        _tag: "enabled",
+        ttl: { literal: "3d", milliseconds: 259_200_000 },
+      });
     }
   });
 
@@ -80,6 +85,9 @@ describe("strict version 1 configuration parsing", () => {
   test.each([
     { version: 1, extra: true, references: {} },
     { version: 1, refresh: { policy: "manual", extra: true }, references: {} },
+    { version: 1, errorLog: { enabled: false, ttl: "1d" }, references: {} },
+    { version: 1, errorLog: { enabled: true }, references: {} },
+    { version: 1, errorLog: { enabled: true, ttl: "0d" }, references: {} },
     { version: 1, references: { local: { path: ".", extra: true } } },
     { version: 1, references: { remote: { repository: "owner/repo", extra: true } } },
     {
@@ -133,6 +141,7 @@ describe("global and project configuration merge", () => {
       {
         version: 1,
         refresh: { policy: "ttl", ttl: "1d" },
+        errorLog: { enabled: true, ttl: "14d" },
         references: {
           shared: {
             repository: "owner/global",
@@ -150,6 +159,7 @@ describe("global and project configuration merge", () => {
       {
         version: 1,
         refresh: { policy: "session" },
+        errorLog: { enabled: false },
         references: { shared: { path: "../local" } },
       },
       "/workspace/.pi/repository-references.json",
@@ -168,6 +178,7 @@ describe("global and project configuration merge", () => {
       });
       expect(merged.references.get("inherited")).toMatchObject({ refresh: { _tag: "session" } });
       expect(merged.references.get("pinned")).toMatchObject({ refresh: { _tag: "manual" } });
+      expect(merged.errorLog).toEqual({ _tag: "disabled" });
     }
   });
 
@@ -260,6 +271,7 @@ describe("trust-aware configuration loading", () => {
     if (result.status === "ok") {
       expect(result.value.references.size).toBe(0);
       expect(result.value.fileWideRefresh).toMatchObject({ _tag: "ttl", ttl: { literal: "7d" } });
+      expect(result.value.errorLog).toEqual({ _tag: "disabled" });
     }
   });
 

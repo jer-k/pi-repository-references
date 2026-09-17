@@ -5,6 +5,7 @@ import { describe, expect, test } from "vitest";
 import { GitCloneError } from "../extensions/repository-reference-errors.ts";
 import { parseAlias } from "../extensions/repository-references/alias.ts";
 import type { CacheMetadata } from "../extensions/repository-references/cache-metadata.ts";
+import type { RepositoryReferenceErrorLog } from "../extensions/repository-references/error-log.ts";
 import type { GitProcess, RepositoryFileSystem } from "../extensions/repository-references/ports.ts";
 import { registerReferenceCommands } from "../extensions/repository-references/reference-commands.ts";
 import { parseRefreshPolicy } from "../extensions/repository-references/refresh-policy.ts";
@@ -28,7 +29,7 @@ describe("Repository Reference commands", () => {
       { getSession: () => session, getRefreshOptions: () => undefined }
     );
 
-    expect([...commands.keys()]).toEqual(["references", "references-refresh"]);
+    expect([...commands.keys()]).toEqual(["references", "references-logs", "references-refresh"]);
     expect(await commands.get("references-refresh")?.getArgumentCompletions?.("sou")).toEqual([
       { value: "source", label: "source", description: "source description" },
     ]);
@@ -91,6 +92,52 @@ describe("Repository Reference commands", () => {
       message: expect.stringContaining("@good: ready"),
     });
     expect(notifications.at(-1)?.message).toContain("@bad: failed — Git clone failed");
+  });
+
+  test("views retained errors and can ask Pi to review the log", async () => {
+    const commands = new Map<string, RegisteredCommandOptions>();
+    const sentMessages: Array<string> = [];
+    const errorLog: RepositoryReferenceErrorLog = {
+      path: "/agent/repository-references/errors.jsonl",
+      record: async () => Result.ok(undefined),
+      read: async () =>
+        Result.ok([
+          {
+            version: 1,
+            timestamp: "2026-01-01T00:00:00.000Z",
+            context: { alias: "effect", operation: "fetch", mode: "automatic" },
+            error: { _tag: "GitFetchError", message: "Git fetch failed", diagnostic: "connection reset" },
+          },
+        ]),
+      flush: async () => undefined,
+    };
+    registerReferenceCommands(
+      testCast<
+        {
+          registerCommand: (name: string, options: RegisteredCommandOptions) => void;
+          sendUserMessage: (message: string) => void;
+        },
+        ExtensionAPI
+      >({
+        registerCommand: (name, options) => commands.set(name, options),
+        sendUserMessage: (message) => sentMessages.push(message),
+      }),
+      {
+        getSession: () => undefined,
+        getRefreshOptions: () => undefined,
+        getErrorLog: () => errorLog,
+      }
+    );
+    const notifications: Array<{ readonly message: string; readonly type: string | undefined }> = [];
+
+    await commands.get("references-logs")?.handler("", commandContext(notifications));
+    await commands.get("references-logs")?.handler("review", commandContext(notifications));
+
+    expect(notifications.at(-1)?.message).toContain("connection reset");
+    expect(notifications.at(-1)?.message).toContain(errorLog.path);
+    expect(sentMessages).toHaveLength(1);
+    expect(sentMessages[0]).toContain(errorLog.path);
+    expect(sentMessages[0]).toContain("diagnose the newest failures");
   });
 
   test("reports offline refreshes without invoking Managed Checkout publication", async () => {

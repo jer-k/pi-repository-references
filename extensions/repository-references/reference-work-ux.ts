@@ -13,7 +13,10 @@ export type ReferenceWorkUx = {
 };
 
 /** Create terminal-guarded footer and notification behavior for one Pi session. */
-export function createReferenceWorkUx(context: Pick<ExtensionContext, "mode" | "hasUI" | "ui">): ReferenceWorkUx {
+export function createReferenceWorkUx(
+  context: Pick<ExtensionContext, "mode" | "hasUI" | "ui">,
+  failureDetailHint?: string
+): ReferenceWorkUx {
   const activeWork = new Map<string, "clone" | "refresh">();
   let active = true;
 
@@ -37,7 +40,8 @@ export function createReferenceWorkUx(context: Pick<ExtensionContext, "mode" | "
         context.ui.notify(`Repository Reference @${event.alias} is ready`, "info");
       }
       if (event._tag === "failed") {
-        context.ui.notify(`Repository Reference @${event.alias} failed: ${event.error.message}`, "error");
+        const hint = failureDetailHint === undefined ? "" : `; ${failureDetailHint}`;
+        context.ui.notify(`Repository Reference @${event.alias} failed: ${event.error.message}${hint}`, "error");
       }
     },
     stop: () => {
