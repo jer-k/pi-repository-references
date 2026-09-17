@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { fuzzyFilter, type AutocompleteItem } from "@earendil-works/pi-tui";
 
+import { renderErrorLogEntries, type RepositoryReferenceErrorLog } from "./error-log.ts";
 import { renderReferenceStatuses } from "./reference-status.ts";
 import {
   refreshRepositoryReference,
@@ -12,9 +13,10 @@ import {
 export type ReferenceCommandDependencies = {
   readonly getSession: () => RepositoryReferencesSession | undefined;
   readonly getRefreshOptions: () => RefreshRepositoryReferenceOptions | undefined;
+  readonly getErrorLog?: () => RepositoryReferenceErrorLog | undefined;
 };
 
-/** Register `/references` and `/references-refresh [alias]` command adapters. */
+/** Register status, refresh, and structured error-log command adapters. */
 export function registerReferenceCommands(pi: ExtensionAPI, dependencies: ReferenceCommandDependencies): void {
   pi.registerCommand("references", {
     description: "Show configured Repository References and their current status",
@@ -25,6 +27,42 @@ export function registerReferenceCommands(pi: ExtensionAPI, dependencies: Refere
         return;
       }
       notify(context, renderReferenceStatuses(session), "info");
+    },
+  });
+
+  pi.registerCommand("references-logs", {
+    description: "View retained Repository References errors or ask Pi to review them",
+    getArgumentCompletions: (argumentPrefix) => completeLogAction(argumentPrefix),
+    handler: async (arguments_, context) => {
+      const action = parseLogArguments(arguments_);
+      if (action._tag === "invalid") {
+        notify(context, action.message, "error");
+        return;
+      }
+
+      const errorLog = dependencies.getErrorLog?.();
+      if (errorLog === undefined) {
+        notify(context, "Repository References error logging is disabled or unavailable.", "info");
+        return;
+      }
+      const entries = await errorLog.read();
+      if (entries.status === "error") {
+        notify(context, `Could not read Repository References error log: ${entries.error.message}`, "error");
+        return;
+      }
+      if (action.action === "review") {
+        if (entries.value.length === 0) {
+          notify(context, `Repository References error log is empty.\nPath: ${errorLog.path}`, "info");
+          return;
+        }
+        pi.sendUserMessage(
+          `Review the structured Repository References error log at ${JSON.stringify(errorLog.path)}. ` +
+            "Read the JSONL file, diagnose the newest failures from their tags, diagnostics, and cause chains, " +
+            "and recommend concrete next steps. Do not modify Managed Checkouts and do not expose credentials."
+        );
+        return;
+      }
+      notify(context, renderErrorLogEntries(entries.value, errorLog.path), "info");
     },
   });
 
@@ -68,6 +106,33 @@ export function registerReferenceCommands(pi: ExtensionAPI, dependencies: Refere
       );
     },
   });
+}
+
+/** Parse the error-log command's optional review action. */
+function parseLogArguments(
+  input: string
+):
+  | { readonly _tag: "valid"; readonly action: "view" | "review" }
+  | { readonly _tag: "invalid"; readonly message: string } {
+  const action = input.trim();
+  if (action.length === 0) {
+    return { _tag: "valid", action: "view" };
+  }
+  return action === "review"
+    ? { _tag: "valid", action: "review" }
+    : { _tag: "invalid", message: "Usage: /references-logs [review]" };
+}
+
+/** Complete the optional `review` action for the error-log command. */
+function completeLogAction(argumentPrefix: string): AutocompleteItem[] | null {
+  if (argumentPrefix.trim() !== argumentPrefix || argumentPrefix.includes(" ")) {
+    return null;
+  }
+  return fuzzyFilter(
+    [{ value: "review", label: "review", description: "Ask Pi to diagnose retained errors" }],
+    argumentPrefix,
+    (candidate) => candidate.value
+  );
 }
 
 /** Parse the command's optional single bare Alias argument. */

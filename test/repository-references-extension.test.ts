@@ -17,6 +17,6 @@ test("loads the extension factory without starting session resources", () => {
   };
 
   expect(() => extension(testCast<typeof pi, ExtensionAPI>(pi))).not.toThrow();
-  expect(registeredCommands).toEqual(["references", "references-refresh"]);
+  expect(registeredCommands).toEqual(["references", "references-logs", "references-refresh"]);
   expect(registeredEvents).toEqual(["session_start", "before_agent_start", "tool_call", "session_shutdown"]);
 });

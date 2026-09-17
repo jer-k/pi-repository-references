@@ -11,6 +11,7 @@ import {
   UnsupportedConfigurationVersionError,
 } from "../repository-reference-errors.ts";
 import { parseAlias, type Alias } from "./alias.ts";
+import { parseDuration, type Duration } from "./duration.ts";
 import { parseJsonValue, type JsonValue } from "./json-value.ts";
 import type { RepositoryFileSystem } from "./ports.ts";
 import { DEFAULT_REFRESH_POLICY, parseRefreshPolicy, type RefreshPolicy } from "./refresh-policy.ts";
@@ -43,16 +44,23 @@ export type RemoteReferenceConfiguration = {
 /** One fully merged and parsed Repository Reference entry. */
 export type RepositoryReferenceConfiguration = LocalReferenceConfiguration | RemoteReferenceConfiguration;
 
+/** Opt-in structured error-log retention policy. */
+export type ErrorLogConfiguration =
+  | { readonly _tag: "disabled" }
+  | { readonly _tag: "enabled"; readonly ttl: Duration };
+
 /** One strict version 1 document, before global/project policy inheritance. */
 export type ParsedConfigurationDocument = {
   readonly references: ReadonlyMap<string, ParsedReferenceEntry>;
   readonly refresh: RefreshPolicy | undefined;
+  readonly errorLog: ErrorLogConfiguration | undefined;
 };
 
 /** Successfully loaded and merged configuration. */
 export type RepositoryReferencesConfiguration = {
   readonly references: ReadonlyMap<string, RepositoryReferenceConfiguration>;
   readonly fileWideRefresh: RefreshPolicy;
+  readonly errorLog: ErrorLogConfiguration;
 };
 
 /** Inputs for trust-aware global and project configuration loading. */
@@ -89,6 +97,10 @@ const TtlRefreshSchema = Type.Object(
   { additionalProperties: false }
 );
 const RefreshSchema = Type.Union([SessionRefreshSchema, ManualRefreshSchema, TtlRefreshSchema]);
+const ErrorLogSchema = Type.Union([
+  Type.Object({ enabled: Type.Literal(false) }, { additionalProperties: false }),
+  Type.Object({ enabled: Type.Literal(true), ttl: DurationSchema }, { additionalProperties: false }),
+]);
 const LocalReferenceSchema = Type.Object(
   {
     path: Type.String({ minLength: 1 }),
@@ -110,6 +122,7 @@ const ConfigurationSchema = Type.Object(
   {
     version: Type.Literal(1),
     refresh: Type.Optional(RefreshSchema),
+    errorLog: Type.Optional(ErrorLogSchema),
     references: Type.Record(Type.String({ pattern: "^[a-z0-9][a-z0-9._-]*$" }), ReferenceSchema),
   },
   { additionalProperties: false }
@@ -187,6 +200,7 @@ export function mergeConfigurationDocuments(
   projectDocument: ParsedConfigurationDocument | undefined
 ): RepositoryReferencesConfiguration {
   const fileWideRefresh = projectDocument?.refresh ?? globalDocument?.refresh ?? DEFAULT_REFRESH_POLICY;
+  const errorLog = projectDocument?.errorLog ?? globalDocument?.errorLog ?? { _tag: "disabled" as const };
   const parsedEntries = new Map<string, ParsedReferenceEntry>(globalDocument?.references);
   for (const [alias, reference] of projectDocument?.references ?? []) {
     parsedEntries.set(alias, reference);
@@ -197,7 +211,7 @@ export function mergeConfigurationDocuments(
     references.set(alias, reference._tag === "local" ? reference : applyEffectiveRefresh(reference, fileWideRefresh));
   }
 
-  return { references, fileWideRefresh };
+  return { references, fileWideRefresh, errorLog };
 }
 
 /** Convert a schema-parsed configuration protocol into refined entries. */
@@ -215,6 +229,19 @@ function parseConfigurationProtocol(
     refresh = parsedRefresh.value;
   }
 
+  let errorLog: ErrorLogConfiguration | undefined;
+  if (input.errorLog !== undefined) {
+    if (!input.errorLog.enabled) {
+      errorLog = { _tag: "disabled" };
+    } else {
+      const ttl = parseDuration(input.errorLog.ttl);
+      if (ttl.status === "error") {
+        return validationError(configurationPath, "errorLog.ttl", ttl.error.message);
+      }
+      errorLog = { _tag: "enabled", ttl: ttl.value };
+    }
+  }
+
   const references = new Map<string, ParsedReferenceEntry>();
   for (const [aliasInput, referenceInput] of Object.entries(input.references)) {
     const alias = parseAlias(aliasInput);
@@ -228,7 +255,7 @@ function parseConfigurationProtocol(
     references.set(aliasInput, reference.value);
   }
 
-  return Result.ok({ references, refresh });
+  return Result.ok({ references, refresh, errorLog });
 }
 
 /** Parse one Local or Remote Reference protocol into its domain entry. */

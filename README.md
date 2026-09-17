@@ -59,7 +59,7 @@ Repository References reads two optional files:
 - Global: `$PI_CODING_AGENT_DIR/repository-references.json` (or Pi's resolved agent directory)
 - Project: `<cwd>/.pi/repository-references.json`, only when Pi trusts the project
 
-The project file replaces same-named global entries as complete entries. Its file-wide refresh policy also replaces the global file-wide policy. Any read, JSON, version, or schema error in either loaded file disables the complete configured set. Physical roots already exposed in the current session remain write-protected while configuration is unavailable, but Alias resolution is disabled with the configured set. Missing files are valid empty inputs.
+The project file replaces same-named global entries as complete entries. Its file-wide refresh policy and error-log setting each replace the corresponding global setting when present. Any read, JSON, version, or schema error in either loaded file disables the complete configured set. Physical roots already exposed in the current session remain write-protected while configuration is unavailable, but Alias resolution is disabled with the configured set. Missing files are valid empty inputs.
 
 Configuration uses the strict version 1 schema:
 
@@ -67,6 +67,7 @@ Configuration uses the strict version 1 schema:
 {
   "version": 1,
   "refresh": { "policy": "ttl", "ttl": "7d" },
+  "errorLog": { "enabled": true, "ttl": "7d" },
   "references": {
     "effect": {
       "repository": "Effect-TS/effect",
@@ -89,13 +90,14 @@ Configuration uses the strict version 1 schema:
 The complete document shape is:
 
 ```text
-Configuration { version: 1, refresh?: RefreshPolicy, references: Record<Alias, LocalReference | RemoteReference> }
+Configuration { version: 1, refresh?: RefreshPolicy, errorLog?: ErrorLog, references: Record<Alias, LocalReference | RemoteReference> }
 LocalReference { path: string, description?: string }
 RemoteReference { repository: string, ref?: string, description?: string, refresh?: RefreshPolicy }
 RefreshPolicy = { policy: "session" } | { policy: "manual" } | { policy: "ttl", ttl: Duration }
+ErrorLog = { enabled: false } | { enabled: true, ttl: Duration }
 ```
 
-Aliases match `^[a-z0-9][a-z0-9._-]*$`. `version` and `references` are required; `references` may be empty. String shorthand is unsupported. Every entry contains exactly one of `path` or `repository`; `ref` and `refresh` are invalid on Local References. Unknown fields and empty Descriptions are errors. TTL values are positive integers ending in `m`, `h`, or `d`. A per-reference policy replaces the file-wide policy, and the default is a seven-day TTL.
+Aliases match `^[a-z0-9][a-z0-9._-]*$`. `version` and `references` are required; `references` may be empty. String shorthand is unsupported. Every entry contains exactly one of `path` or `repository`; `ref` and `refresh` are invalid on Local References. Unknown fields and empty Descriptions are errors. TTL values are positive integers ending in `m`, `h`, or `d`. A per-reference policy replaces the file-wide policy, and the default is a seven-day TTL. Error logging is disabled by default; an enabled log requires an explicit TTL, while a disabled log accepts no TTL.
 
 ### Local and Remote References
 
@@ -128,6 +130,8 @@ Repository References are read-only workflow resources. Built-in `edit` and `wri
 `/references` displays every configured Alias with its credential-safe local or remote source, configured ref or default branch, resolved root, effective Refresh Policy, lifecycle state, last successful remote refresh, and concise current error.
 
 `/references-refresh [alias]` revalidates and reindexes one Local Reference or force-fetches/materializes one Remote Reference. Omit the Alias to process all references; failures are isolated and summarized without stopping unrelated work. Alias argument completion uses bare names without `@`. Explicit remote refresh bypasses TTL and cooldown, but reports offline state without invoking Git. There is no cancellation UI in the first release.
+
+`/references-logs` displays the newest retained Remote Reference clone and refresh errors, including sanitized Git stderr diagnostics and safe process-cause fields. `/references-logs review` submits a user message asking the current Pi agent to read and diagnose the complete log. When enabled, the JSONL file is stored at `$PI_CODING_AGENT_DIR/repository-references/errors.jsonl`. Expired and malformed records are removed atomically at extension startup and before each append; concurrent Pi processes serialize updates. Suspicious credential fields and URL userinfo are redacted, but the log can contain repository identities, local paths, refs, and command diagnostics, so enable it only where that diagnostic data is acceptable.
 
 In TUI mode, active clone and refresh work appears as a compact footer status. Background initial-materialization success and background failures produce notifications; routine successful TTL refreshes do not. Commands and notifications also use Pi's general UI protocol where available, including RPC mode.
 

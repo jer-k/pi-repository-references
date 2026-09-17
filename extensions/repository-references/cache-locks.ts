@@ -10,8 +10,8 @@ import type { CacheLockLease, CacheLocks } from "./ports.ts";
 /**
  * Create inter-process cache locks backed by atomic lock directories from `proper-lockfile`.
  *
- * Locks are scoped to credential-free cache keys and automatically considered stale after two
- * minutes so an abruptly terminated Pi process cannot permanently strand a cache entry.
+ * Locks are scoped to credential-free resource keys and automatically considered stale after two
+ * minutes so an abruptly terminated Pi process cannot permanently strand a shared resource.
  */
 export function createProperCacheLocks(lockDirectory: string): CacheLocks {
   return {
@@ -39,7 +39,7 @@ async function acquireLock(
         cacheKey,
         operation: "acquire",
         cause,
-        message: `Could not acquire Managed Checkout lock ${cacheKey}`,
+        message: `Could not acquire Repository References lock ${cacheKey}`,
       }),
   });
   if (acquired.status === "error") {
@@ -59,7 +59,7 @@ async function acquireLock(
             cacheKey,
             operation: "release",
             cause,
-            message: `Could not release Managed Checkout lock ${cacheKey}`,
+            message: `Could not release Repository References lock ${cacheKey}`,
           }),
       });
       if (result.status === "ok") {

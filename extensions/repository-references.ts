@@ -5,7 +5,13 @@ import { CONFIG_DIR_NAME, getAgentDir, isToolCallEventType, type ExtensionAPI } 
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 
+import type { RepositoryReferenceError } from "./repository-reference-errors.ts";
 import { createProperCacheLocks } from "./repository-references/cache-locks.ts";
+import {
+  createRepositoryReferenceErrorLog,
+  type ErrorLogContext,
+  type RepositoryReferenceErrorLog,
+} from "./repository-references/error-log.ts";
 import { createNodeGitProcess } from "./repository-references/git-process.ts";
 import { createManagedCheckoutStore } from "./repository-references/managed-checkout-storage.ts";
 import { createManagedGit } from "./repository-references/managed-git.ts";
@@ -17,6 +23,7 @@ import {
   renderReferenceCatalogue,
 } from "./repository-references/reference-catalogue.ts";
 import { registerReferenceCommands } from "./repository-references/reference-commands.ts";
+import { loadRepositoryReferencesConfiguration } from "./repository-references/reference-configuration.ts";
 import { isProtectedPhysicalPath } from "./repository-references/reference-path.ts";
 import { createReferenceWorkUx } from "./repository-references/reference-work-ux.ts";
 import {
@@ -25,7 +32,7 @@ import {
   finishRepositoryReferencesSessionWork,
   resolveSessionReadPath,
   shouldBlockSessionWrite,
-  startRepositoryReferencesSession,
+  startRepositoryReferencesSessionFromConfiguration,
   waitForRequestedReferences,
   type RefreshRepositoryReferenceOptions,
   type RepositoryReferencesSession,
@@ -53,12 +60,15 @@ export default function repositoryReferences(pi: ExtensionAPI): void {
   const gitProcess = createNodeGitProcess();
   let session: RepositoryReferencesSession | undefined;
   let refreshOptions: RefreshRepositoryReferenceOptions | undefined;
+  let errorLog: RepositoryReferenceErrorLog | undefined;
   let stopCurrentUx: (() => void) | undefined;
+  let reportedLogFailure = false;
   const exposedRoots = new Set<string>();
 
   registerReferenceCommands(pi, {
     getSession: () => session,
     getRefreshOptions: () => refreshOptions,
+    getErrorLog: () => errorLog,
   });
 
   pi.on("session_start", async (_event, ctx) => {
@@ -69,6 +79,8 @@ export default function repositoryReferences(pi: ExtensionAPI): void {
     }
     session = undefined;
     refreshOptions = undefined;
+    errorLog = undefined;
+    reportedLogFailure = false;
     exposedRoots.clear();
     const runtimeToken = makeRuntimeToken(ctx.sessionManager.getSessionId());
 
@@ -93,15 +105,68 @@ export default function repositoryReferences(pi: ExtensionAPI): void {
     const agentDirectory = getAgentDir();
     const cacheRoot = join(agentDirectory, "repository-references");
     const clock = { now: () => new Date() };
+    const locks = createProperCacheLocks(join(cacheRoot, "locks"));
+    const configuration = await loadRepositoryReferencesConfiguration({
+      agentDirectory,
+      cwd: ctx.cwd,
+      homeDirectory: homedir(),
+      projectTrusted: ctx.isProjectTrusted(),
+      configDirectoryName: CONFIG_DIR_NAME,
+      fileSystem,
+    });
+    if (configuration.status === "error") {
+      if (ctx.hasUI) {
+        ctx.ui.notify(configuration.error.message, "error");
+      }
+      return;
+    }
+
+    if (configuration.value.errorLog._tag === "enabled") {
+      const openedLog = await createRepositoryReferenceErrorLog({
+        cacheRoot,
+        configuration: configuration.value.errorLog,
+        fileSystem,
+        locks,
+        clock,
+      });
+      if (openedLog.status === "error") {
+        if (ctx.hasUI) {
+          ctx.ui.notify(`Repository References could not open its error log: ${openedLog.error.message}`, "warning");
+        }
+      } else {
+        errorLog = openedLog.value;
+      }
+    }
+
     const managedCheckouts = createManagedCheckoutStore({
       cacheRoot,
       fileSystem,
-      locks: createProperCacheLocks(join(cacheRoot, "locks")),
+      locks,
       git: createManagedGit(gitProcess, fileSystem),
       clock,
     });
-    const workUx = createReferenceWorkUx(ctx);
-    const onReferenceWork = workUx.onReferenceWork;
+    const workUx = createReferenceWorkUx(
+      ctx,
+      errorLog === undefined ? undefined : "run /references-logs for retained diagnostics"
+    );
+    const onReferenceWork = (event: Parameters<typeof workUx.onReferenceWork>[0]) => {
+      workUx.onReferenceWork(event);
+      if (event._tag === "failed") {
+        recordError(
+          event.error,
+          {
+            alias: event.alias,
+            operation: event.operation,
+            mode: event.mode,
+          },
+          (message) => {
+            if (ctx.hasUI) {
+              ctx.ui.notify(message, "warning");
+            }
+          }
+        );
+      }
+    };
     stopCurrentUx = workUx.stop;
     const offline = isPiOffline(process.env.PI_OFFLINE);
     refreshOptions = {
@@ -112,13 +177,7 @@ export default function repositoryReferences(pi: ExtensionAPI): void {
       offline,
       onReferenceWork,
     };
-    const started = await startRepositoryReferencesSession({
-      agentDirectory,
-      cwd: ctx.cwd,
-      homeDirectory: homedir(),
-      projectTrusted: ctx.isProjectTrusted(),
-      configDirectoryName: CONFIG_DIR_NAME,
-      fileSystem,
+    const started = await startRepositoryReferencesSessionFromConfiguration(configuration.value, {
       fullFileSystem: fileSystem,
       git: gitProcess,
       clock,
@@ -138,16 +197,10 @@ export default function repositoryReferences(pi: ExtensionAPI): void {
       },
       onReferenceWork,
     });
-    if (started.status === "error") {
-      if (ctx.hasUI) {
-        ctx.ui.notify(started.error.message, "error");
-      }
-      return;
-    }
     for (const root of exposedRoots) {
-      started.value.protectedRoots.add(root);
+      started.protectedRoots.add(root);
     }
-    session = started.value;
+    session = started;
     if (ctx.mode === "tui") {
       ctx.ui.addAutocompleteProvider((current) => createReferenceAutocompleteProvider(current, () => session));
     }
@@ -236,16 +289,37 @@ export default function repositoryReferences(pi: ExtensionAPI): void {
     stopCurrentUx?.();
     stopCurrentUx = undefined;
     const currentSession = session;
+    const currentErrorLog = errorLog;
     session = undefined;
     refreshOptions = undefined;
-    if (currentSession === undefined) {
-      return;
-    }
-    if (event.reason === "reload") {
+    if (currentSession !== undefined && event.reason === "reload") {
       await finishRepositoryReferencesSessionWork(currentSession);
     }
-    closeRepositoryReferencesSession(currentSession);
+    if (currentSession !== undefined) {
+      closeRepositoryReferencesSession(currentSession);
+    }
+    await currentErrorLog?.flush();
+    errorLog = undefined;
   });
+
+  /** Queue one structured diagnostic without allowing logging failure to replace the primary operation. */
+  function recordError(
+    error: RepositoryReferenceError,
+    context: ErrorLogContext,
+    notifyFailure: (message: string) => void
+  ): void {
+    const currentLog = errorLog;
+    if (currentLog === undefined) {
+      return;
+    }
+
+    void currentLog.record(context, error).then((recorded) => {
+      if (recorded.status === "error" && !reportedLogFailure) {
+        reportedLogFailure = true;
+        notifyFailure(`Repository References could not write its error log: ${recorded.error.message}`);
+      }
+    });
+  }
 }
 
 /** Build a reload-stable but process- and session-specific automatic-refresh identity. */
