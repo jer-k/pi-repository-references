@@ -164,7 +164,9 @@ test("writes failed Git diagnostics and advertises the log command", async () =>
   );
 
   const previousAgentDirectory = process.env.PI_CODING_AGENT_DIR;
+  const previousOffline = process.env.PI_OFFLINE;
   process.env.PI_CODING_AGENT_DIR = agentDir;
+  delete process.env.PI_OFFLINE;
   const entries: Array<DirectCustomEntry> = [];
   const notifications: Array<string> = [];
   const loaded = loadDirectExtension(entries);
@@ -190,6 +192,11 @@ test("writes failed Git diagnostics and advertises the log command", async () =>
       delete process.env.PI_CODING_AGENT_DIR;
     } else {
       process.env.PI_CODING_AGENT_DIR = previousAgentDirectory;
+    }
+    if (previousOffline === undefined) {
+      delete process.env.PI_OFFLINE;
+    } else {
+      process.env.PI_OFFLINE = previousOffline;
     }
     await rm(workspace, { recursive: true, force: true });
   }
