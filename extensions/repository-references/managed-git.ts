@@ -64,7 +64,7 @@ export type ManagedGit = {
     pinned: Pick<ResolvedManagedRevision, "kind" | "pinnedCommit"> | undefined,
     remoteNamespace: "origin" | "source"
   ) => Promise<ResultType<ResolvedManagedRevision, ManagedGitError>>;
-  /** Produce a detached checkout and remove the clone remote containing the source URL. */
+  /** Produce a detached checkout while exposing the source URL only to the checkout process. */
   readonly checkoutDetached: (
     repository: ParsedRepositorySource,
     stagingPath: string,
@@ -101,7 +101,7 @@ export function createManagedGit(
         networkTimeoutMilliseconds
       );
       if (partial.status === "ok") {
-        return Result.ok(undefined);
+        return clearRemoteUrl(process, repository, stagingPath, "origin");
       }
       if (!isUnsupportedFilter(partial.error)) {
         return partial;
@@ -119,13 +119,18 @@ export function createManagedGit(
           })
         );
       }
-      return runNetwork(
+      const complete = await runNetwork(
         process,
         "clone",
         repository,
         ["clone", "--no-checkout", "--no-recurse-submodules", repository.cloneSource, stagingPath],
         networkTimeoutMilliseconds
       );
+      if (complete.status === "error") {
+        return complete;
+      }
+
+      return clearRemoteUrl(process, repository, stagingPath, "origin");
     },
     prepareRefresh: async (repository, oldCheckout, stagingPath) => {
       const copied = await process.run({
@@ -169,37 +174,122 @@ export function createManagedGit(
           })
         );
       }
-      return runNetwork(
-        process,
-        "fetch",
-        repository,
-        [
-          "-C",
-          stagingPath,
-          "fetch",
-          "--force",
-          repository.cloneSource,
-          "+HEAD:refs/remotes/source/HEAD",
-          "+refs/heads/*:refs/remotes/source/*",
-          "+refs/tags/*:refs/tags/*",
-        ],
-        networkTimeoutMilliseconds
-      );
+      const configured = await configurePartialCloneRemote(process, repository, stagingPath);
+      if (configured.status === "error") {
+        return configured;
+      }
+
+      const filtered = await fetchRemoteRefs(process, repository, stagingPath, networkTimeoutMilliseconds, "filtered");
+      if (filtered.status === "ok" || !isUnsupportedFilter(filtered.error)) {
+        return filtered;
+      }
+
+      const cleared = await clearPartialCloneRemote(process, repository, stagingPath);
+      if (cleared.status === "error") {
+        return cleared;
+      }
+
+      return fetchRemoteRefs(process, repository, stagingPath, networkTimeoutMilliseconds, "complete");
     },
     resolveRevision: (repository, stagingPath, configuredRef, pinned, remoteNamespace) =>
       resolveRevision(process, repository, stagingPath, configuredRef, pinned, remoteNamespace),
-    checkoutDetached: async (repository, stagingPath, commit) => {
-      const checkedOut = await runLocal(process, repository, stagingPath, ["checkout", "--detach", "--force", commit]);
-      if (checkedOut.status === "error") {
-        return checkedOut;
-      }
-      const removedRemote = await runLocal(process, repository, stagingPath, ["remote", "remove", "origin"]);
-      if (removedRemote.status === "error" && !removedRemote.error.message.includes("No such remote")) {
-        return removedRemote;
-      }
-      return Result.ok(undefined);
-    },
+    checkoutDetached: (repository, stagingPath, commit) =>
+      runLocal(process, repository, stagingPath, [
+        "-c",
+        `remote.origin.url=${repository.cloneSource}`,
+        "-c",
+        `remote.source.url=${repository.cloneSource}`,
+        "checkout",
+        "--detach",
+        "--force",
+        commit,
+      ]),
   };
+}
+
+/** Remove a clone URL while retaining any promisor metadata needed by later refreshes. */
+async function clearRemoteUrl(
+  process: GitProcess,
+  repository: ParsedRepositorySource,
+  stagingPath: string,
+  remote: "origin" | "source"
+): Promise<ResultType<void, ManagedGitError>> {
+  return runLocal(process, repository, stagingPath, ["config", "--unset-all", `remote.${remote}.url`]);
+}
+
+/** Restore partial-clone semantics lost when Git locally clones a published checkout. */
+async function configurePartialCloneRemote(
+  process: GitProcess,
+  repository: ParsedRepositorySource,
+  stagingPath: string
+): Promise<ResultType<void, ManagedGitError>> {
+  const commands: ReadonlyArray<ReadonlyArray<string>> = [
+    ["remote", "remove", "origin"],
+    ["config", "core.repositoryformatversion", "1"],
+    ["config", "remote.source.promisor", "true"],
+    ["config", "remote.source.partialclonefilter", "blob:none"],
+  ];
+
+  for (const command of commands) {
+    const configured = await runLocal(process, repository, stagingPath, command);
+    if (configured.status === "error") {
+      return configured;
+    }
+  }
+
+  return Result.ok(undefined);
+}
+
+/** Remove promisor declarations before retrying against a server without filter support. */
+async function clearPartialCloneRemote(
+  process: GitProcess,
+  repository: ParsedRepositorySource,
+  stagingPath: string
+): Promise<ResultType<void, ManagedGitError>> {
+  const commands: ReadonlyArray<ReadonlyArray<string>> = [
+    ["config", "--unset-all", "remote.source.promisor"],
+    ["config", "--unset-all", "remote.source.partialclonefilter"],
+  ];
+
+  for (const command of commands) {
+    const cleared = await runLocal(process, repository, stagingPath, command);
+    if (cleared.status === "error") {
+      return cleared;
+    }
+  }
+
+  return Result.ok(undefined);
+}
+
+/** Fetch moving refs through a credential-bearing process override rather than persisted config. */
+function fetchRemoteRefs(
+  process: GitProcess,
+  repository: ParsedRepositorySource,
+  stagingPath: string,
+  timeoutMilliseconds: number,
+  mode: "filtered" | "complete"
+): Promise<ResultType<void, ManagedGitError>> {
+  const filter = mode === "filtered" ? ["--filter=blob:none"] : [];
+
+  return runNetwork(
+    process,
+    "fetch",
+    repository,
+    [
+      "-c",
+      `remote.source.url=${repository.cloneSource}`,
+      "-C",
+      stagingPath,
+      "fetch",
+      ...filter,
+      "--force",
+      "source",
+      "+HEAD:refs/remotes/source/HEAD",
+      "+refs/heads/*:refs/remotes/source/*",
+      "+refs/tags/*:refs/tags/*",
+    ],
+    timeoutMilliseconds
+  );
 }
 
 /** Resolve branch-first configured refs and preserve previously recorded immutable pins. */
@@ -383,7 +473,7 @@ async function runNetwork(
 
 /** Identify the narrow diagnostics that justify retrying without partial-clone filtering. */
 function isUnsupportedFilter(error: ManagedGitError): boolean {
-  if (error._tag !== "GitCloneError") {
+  if (error._tag !== "GitCloneError" && error._tag !== "GitFetchError") {
     return false;
   }
   return /(?:filtering .*not recognized|does not support.*filter|unknown option.*filter|invalid filter-spec)/iu.test(

@@ -81,7 +81,7 @@ describe("Managed Checkout publication", () => {
       for (const checkout of [defaultCheckout, branchCheckout, tagCheckout, commitCheckout]) {
         expect(await revision(checkout.value.root, "HEAD")).toBe(checkout.value.metadata.resolvedCommit);
         expect((await gitOutput(checkout.value.root, "symbolic-ref", "-q", "HEAD")).trim()).toBe("");
-        expect((await gitOutput(checkout.value.root, "remote")).trim()).toBe("");
+        expect(await readFile(join(checkout.value.root, ".git", "config"), "utf8")).not.toContain("url =");
       }
     }
   }, 15_000);
@@ -125,6 +125,56 @@ describe("Managed Checkout publication", () => {
       status: "ok",
       value: { metadata: { resolvedCommit: initialMain, pinnedCommit: initialMain } },
     });
+  }, 15_000);
+
+  test("repairs legacy partial-clone metadata without persisting the remote URL", async () => {
+    const fixture = await createRemoteFixture();
+    await git(fixture.bare, "config", "uploadpack.allowFilter", "true");
+
+    for (const contents of ["main two\n", "main three\n", "main four\n"]) {
+      await writeFile(join(fixture.work, "main.txt"), contents);
+      await git(fixture.work, "add", ".");
+      await git(fixture.work, "commit", "-m", contents.trim());
+    }
+    await git(fixture.work, "push", "origin", "main");
+
+    const storage = createStorage(fixture.workspace);
+    const repository = remoteSource(`file://${fixture.bare}`);
+    const request = { repository, configuredRef: undefined };
+    const initial = await publishManagedCheckout(storage, request, "ensure");
+    if (initial.status === "error") {
+      throw initial.error;
+    }
+
+    const initialConfig = await readFile(join(initial.value.root, ".git", "config"), "utf8");
+    const missingInitialObjects = (
+      await gitOutput(initial.value.root, "rev-list", "--objects", "--all", "--missing=print")
+    )
+      .split("\n")
+      .filter((line) => line.startsWith("?")).length;
+
+    expect(initialConfig).toContain("promisor = true");
+    expect(initialConfig).not.toContain("url =");
+    expect(missingInitialObjects).toBeGreaterThan(0);
+
+    await git(initial.value.root, "remote", "remove", "origin");
+    expect(await readFile(join(initial.value.root, ".git", "config"), "utf8")).not.toContain("promisor = true");
+
+    await writeFile(join(fixture.work, "main.txt"), "main five\n");
+    await git(fixture.work, "add", ".");
+    await git(fixture.work, "commit", "-m", "main five");
+    await git(fixture.work, "push", "origin", "main");
+
+    const refreshed = await publishManagedCheckout(storage, request, "refresh");
+    expect(refreshed.status).toBe("ok");
+    if (refreshed.status === "ok") {
+      const refreshedConfig = await readFile(join(refreshed.value.root, ".git", "config"), "utf8");
+
+      expect(await readFile(join(refreshed.value.root, "main.txt"), "utf8")).toBe("main five\n");
+      expect(refreshedConfig).toContain('[remote "source"]');
+      expect(refreshedConfig).toContain("promisor = true");
+      expect(refreshedConfig).not.toContain("url =");
+    }
   }, 15_000);
 
   test("coalesces concurrent initial publication through the shared cache entry", async () => {
@@ -347,10 +397,36 @@ describe("Managed Git failure classification", () => {
     const result = await managedGit.clone(repository, "/tmp/staging");
 
     expect(result.status).toBe("ok");
-    expect(requests).toHaveLength(2);
+    expect(requests).toHaveLength(3);
     expect(requests[0]).toContain("--filter=blob:none");
     expect(requests[1]).not.toContain("--filter=blob:none");
+    expect(requests[2]).toContain("remote.origin.url");
     expect(removed).toEqual(["/tmp/staging"]);
+  });
+
+  test("falls back to a complete refresh when the remote does not support filtering", async () => {
+    const requests: Array<ReadonlyArray<string>> = [];
+    const process: GitProcess = {
+      run: async (request) => {
+        requests.push(request.arguments);
+        const unsupportedFilteredFetch =
+          request.operation === "fetch" && request.arguments.includes("--filter=blob:none");
+
+        return unsupportedFilteredFetch
+          ? Result.ok(output(128, "fatal: server does not support filter"))
+          : Result.ok(output(0));
+      },
+    };
+    const managedGit = createManagedGit(process, { remove: async () => Result.ok(undefined) });
+    const repository = remoteSource("/tmp/unused.git");
+
+    const result = await managedGit.prepareRefresh(repository, "/tmp/old", "/tmp/staging");
+    const fetches = requests.filter((request) => request.includes("fetch"));
+
+    expect(result.status).toBe("ok");
+    expect(fetches).toHaveLength(2);
+    expect(fetches[0]).toContain("--filter=blob:none");
+    expect(fetches[1]).not.toContain("--filter=blob:none");
   });
 
   test("classifies authentication, timeout, and killed clone failures without credentials", async () => {
